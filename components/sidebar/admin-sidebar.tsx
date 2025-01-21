@@ -9,7 +9,9 @@ import {
     Building2,
     BookOpen,
     Settings,
-    LogOut
+    LogOut,
+    BarChart,
+    UserSquare2
 } from "lucide-react"
 import { createClient } from "@/utils/supabase/client"
 import { useRouter } from "next/navigation"
@@ -18,8 +20,10 @@ import { notifications } from "@/utils/notifications"
 const navigation = [
     { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Agents', href: '/admin/agents', icon: Users },
+    { name: 'Teams', href: '/admin/teams', icon: UserSquare2 },
     { name: 'Organizations', href: '/admin/organizations', icon: Building2 },
     { name: 'Knowledge Base', href: '/admin/knowledge', icon: BookOpen },
+    { name: 'Reports', href: '/admin/reports', icon: BarChart },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
 ]
 
