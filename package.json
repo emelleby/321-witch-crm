@@ -1,10 +1,14 @@
 {
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "generate-types": "ts-node scripts/generate-frontend-types.ts"
+    "generate-types": "ts-node scripts/generate-frontend-types.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -75,7 +79,6 @@
     "lucide-react": "^0.473.0",
     "next": "latest",
     "next-themes": "^0.4.4",
-    "prettier": "^3.4.2",
     "react": "19.0.0",
     "react-day-picker": "9.5.0",
     "react-dom": "19.0.0",
@@ -88,11 +91,24 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@next/eslint-plugin-next": "^15.1.5",
     "@types/deno": "^2.0.0",
     "@types/node": "22.10.7",
     "@types/react": "^19.0.7",
     "@types/react-dom": "19.0.3",
+    "@typescript-eslint/eslint-plugin": "^8.21.0",
+    "@typescript-eslint/parser": "^8.21.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-next": "^0.0.0",
+    "eslint-plugin-prettier": "^5.2.3",
+    "eslint-plugin-react": "^7.37.4",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
     "postcss": "8.5.1",
+    "prettier": "^3.4.2",
+    "prettier-plugin-tailwindcss": "^0.6.10",
     "tailwind-merge": "^2.6.0",
     "tailwindcss": "3.4.17",
     "tailwindcss-animate": "^1.0.7",

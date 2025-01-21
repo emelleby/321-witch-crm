@@ -137,7 +137,7 @@
 - [ ] Unable to remove header style from text in WYSIWYG editor
 - [ ] Preview markdown causes editor to misbehave
 - [ ] The preview modal has two exit buttons
-- [ ] "My Tickets" page for customers is stuck in infinite loading
+- [✅] "My Tickets" page for customers is stuck in infinite loading
 
 ## Current Focus
 

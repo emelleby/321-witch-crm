@@ -2,6 +2,7 @@
   "version": "4",
   "specifiers": {
     "jsr:@supabase/functions-js@*": "2.4.4",
+    "npm:@types/node@*": "22.5.4",
     "npm:openai@^4.52.5": "4.79.1"
   },
   "jsr": {
@@ -140,6 +141,9 @@
     }
   },
   "remote": {
+    "https://deno.land/std@0.200.0/collections/filter_values.ts": "16e1fc456a7969e770ec5b89edf5ac97b295ca534b47c1a83f061b409aad7814",
+    "https://deno.land/std@0.200.0/collections/without_all.ts": "1e3cccb1ed0659455b473c0766d9414b7710d8cef48862c899f445178f66b779",
+    "https://deno.land/std@0.200.0/dotenv/mod.ts": "2caa157ee5afbf74bd85bd6e8f286cb6363a1e4d10cf3376223346b33a7ea75e",
     "https://deno.land/x/openai@v4.69.0/_shims/MultipartBody.ts": "fe06a56b54ae358c9cf99823096e34b36795fdba2e17513f0e9539210edd797d",
     "https://deno.land/x/openai@v4.69.0/_shims/mod.ts": "2e253cb26bfa7060bd37e45626e60e4bf3e7b3fb3e0f559fdfdeef94c73f9372",
     "https://deno.land/x/openai@v4.69.0/_vendor/partial-json-parser/parser.ts": "5ee7caf85edb570fb4b95a81e8fb48fc3c9450b70a46efe7f9c1a2010738d060",
