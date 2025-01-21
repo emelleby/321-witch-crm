@@ -81,12 +81,12 @@ export function VersionHistory({
             // Fetch versions with user names
             const { data: versionsData, error } = await supabase
                 .from('article_versions')
-                .select(\`
+                .select(`
                     *,
                     user_name:created_by(
                         full_name
                     )
-                \`)
+                `)
                 .eq('article_id', articleId)
                 .order('version_number', { ascending: false })
 
@@ -243,7 +243,7 @@ export function VersionHistory({
                                         Comparing v{selectedVersion.version_number} with{' '}
                                         {compareVersion.version_number > versions.length
                                             ? 'current version'
-                                            : \`v\${compareVersion.version_number}\`}
+                                            : `v${compareVersion.version_number}`}
                                     </h3>
                                     <Button
                                         variant="ghost"

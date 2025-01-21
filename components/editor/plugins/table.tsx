@@ -2,10 +2,8 @@
 
 import { useCallback } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import {
-    INSERT_TABLE_COMMAND,
-    TablePlugin as LexicalTablePlugin,
-} from '@lexical/table'
+import { INSERT_TABLE_COMMAND } from '@lexical/table'
+import { TablePlugin as LexicalTablePlugin } from '@lexical/react/LexicalTablePlugin'
 import { Table } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 

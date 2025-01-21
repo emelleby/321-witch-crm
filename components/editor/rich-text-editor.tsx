@@ -21,6 +21,7 @@ import { ToolbarPlugin } from './plugins/toolbar'
 import { OnChangePlugin } from './plugins/on-change'
 import { cn } from '@/lib/utils'
 import { ImageNode } from './nodes/image-node'
+import { LexicalEditor } from 'lexical'
 
 const theme = {
     // Theme styling goes here
@@ -84,11 +85,11 @@ export function RichTextEditor({
 }: RichTextEditorProps) {
     const initialConfig = {
         ...editorConfig,
-        editorState: () => {
+        editorState: (editor: LexicalEditor) => {
             const parser = new DOMParser()
             const dom = parser.parseFromString(initialContent, 'text/html')
             return () => {
-                const nodes = $generateNodesFromDOM(dom)
+                const nodes = $generateNodesFromDOM(editor, dom)
                 return nodes
             }
         },

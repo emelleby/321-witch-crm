@@ -2,6 +2,7 @@
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { useCallback, useState } from 'react'
+import { ImageNode, $createImageNode } from '../nodes/image-node'
 import {
     $getSelection,
     $isRangeSelection,
@@ -45,7 +46,7 @@ export function ToolbarPlugin() {
     const [isUploading, setIsUploading] = useState(false)
 
     const formatText = useCallback(
-        (format: string) => {
+        (format: 'bold' | 'italic' | 'underline' | 'strikethrough') => {
             editor.dispatchCommand(FORMAT_TEXT_COMMAND, format)
         },
         [editor]

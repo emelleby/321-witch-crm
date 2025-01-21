@@ -1,8 +1,9 @@
 'use client'
 
+import * as React from 'react'
 import { DecoratorNode } from 'lexical'
 
-export class ImageNode extends DecoratorNode<JSX.Element> {
+export class ImageNode extends DecoratorNode<React.ReactElement> {
     __src: string
     __altText: string
 
@@ -30,7 +31,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
         return false
     }
 
-    decorate(): JSX.Element {
+    decorate(): React.ReactElement {
         return (
             <div className="relative my-4">
                 <img

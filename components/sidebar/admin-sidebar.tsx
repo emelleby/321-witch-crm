@@ -13,7 +13,8 @@ import {
     BarChart,
     UserSquare2,
     Clock,
-    Tags
+    Tags,
+    FileText
 } from "lucide-react"
 import { createClient } from "@/utils/supabase/client"
 import { useRouter } from "next/navigation"
@@ -29,6 +30,7 @@ const navigation = [
     { name: 'SLA', href: '/admin/sla', icon: Clock },
     { name: 'Reports', href: '/admin/reports', icon: BarChart },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
+    { name: 'Templates', href: '/admin/templates', icon: FileText },
 ]
 
 export function AdminSidebar() {
