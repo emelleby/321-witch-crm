@@ -16,8 +16,9 @@ type Ticket = {
     priority: 'low' | 'normal' | 'high'
     created_at: string
     updated_at: string
-    unread_agent_messages: number
+    unread_messages: number
     organization_id: string | null
+    assigned_to: string | null
 }
 
 type Organization = {
@@ -25,7 +26,7 @@ type Organization = {
     name: string
 }
 
-export default function TicketsPage() {
+export default function AgentTicketsPage() {
     const router = useRouter()
     const supabase = createClient()
     const [tickets, setTickets] = useState<Ticket[]>([])
@@ -67,10 +68,18 @@ export default function TicketsPage() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
 
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('organization_id')
+                .eq('id', user.id)
+                .single()
+
+            if (!profile) return
+
             const { data, error } = await supabase
                 .from('organizations')
                 .select('id, name')
-                .order('name')
+                .eq('id', profile.organization_id)
 
             if (error) throw error
             setOrganizations(data)
@@ -84,6 +93,14 @@ export default function TicketsPage() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
 
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('organization_id')
+                .eq('id', user.id)
+                .single()
+
+            if (!profile) return
+
             setLoading(true)
 
             const { data, error } = await supabase.rpc('search_tickets', {
@@ -94,11 +111,11 @@ export default function TicketsPage() {
                 tag_ids: filters.tagIds.length > 0 ? filters.tagIds : null,
                 date_from: filters.dateFrom,
                 date_to: filters.dateTo,
-                organization_id: filters.organizationId || null,
-                assigned_to: null, // Not used in customer view
+                organization_id: profile.organization_id,
+                assigned_to: filters.assignedTo || null,
                 use_vector_search: filters.useVectorSearch,
                 similarity_threshold: 0.7
-            }).eq('creator_id', user.id)
+            })
 
             if (error) throw error
             setTickets(data)
@@ -147,14 +164,11 @@ export default function TicketsPage() {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold tracking-tight">My Tickets</h1>
-                <Button onClick={() => router.push('/customer/tickets/new')}>
-                    New Ticket
-                </Button>
+                <h1 className="text-3xl font-bold tracking-tight">Tickets</h1>
             </div>
 
             <AdvancedSearch
-                showOrganizationFilter={true}
+                showAssigneeFilter={true}
                 onSearch={handleSearch}
             />
 
@@ -168,15 +182,15 @@ export default function TicketsPage() {
                         <Card
                             key={ticket.id}
                             className="p-6 cursor-pointer hover:bg-accent transition-colors"
-                            onClick={() => router.push(`/customer/tickets/${ticket.id}`)}
+                            onClick={() => router.push(`/agent/tickets/${ticket.id}`)}
                         >
                             <div className="flex items-center justify-between">
                                 <div className="space-y-1">
                                     <div className="flex items-center gap-2">
                                         <h3 className="font-semibold">{ticket.subject}</h3>
-                                        {ticket.unread_agent_messages > 0 && (
+                                        {ticket.unread_messages > 0 && (
                                             <Badge variant="destructive">
-                                                {ticket.unread_agent_messages} new
+                                                {ticket.unread_messages} new
                                             </Badge>
                                         )}
                                     </div>

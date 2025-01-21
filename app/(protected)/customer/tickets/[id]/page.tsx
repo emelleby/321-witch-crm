@@ -27,6 +27,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { SLAStatus } from "@/components/tickets/sla-status"
 
 type Ticket = {
     id: string
@@ -36,6 +37,10 @@ type Ticket = {
     priority: 'low' | 'normal' | 'high'
     created_at: string
     updated_at: string
+    creator_id: string
+    organization_id: string
+    first_response_breach_at: string | null
+    resolution_breach_at: string | null
 }
 
 type Message = {
@@ -48,7 +53,7 @@ type Message = {
     read_by_agent: boolean
 }
 
-type File = {
+type AttachmentFile = {
     id: string
     file_name: string
     content_type: string
@@ -60,12 +65,16 @@ export default function TicketDetailPage({ params }: { params: { id: string } })
     const supabase = createClient()
     const [ticket, setTicket] = useState<Ticket | null>(null)
     const [messages, setMessages] = useState<Message[]>([])
-    const [files, setFiles] = useState<File[]>([])
+    const [files, setFiles] = useState<AttachmentFile[]>([])
     const [newMessage, setNewMessage] = useState("")
     const [newFileIds, setNewFileIds] = useState<string[]>([])
     const [loading, setLoading] = useState(true)
     const [sending, setSending] = useState(false)
     const [showFeedback, setShowFeedback] = useState(false)
+    const [ticketMetrics, setTicketMetrics] = useState<{
+        first_response_time: string | null
+        resolution_time: string | null
+    } | null>(null)
 
     useEffect(() => {
         fetchTicketAndMessages()
@@ -101,12 +110,13 @@ export default function TicketDetailPage({ params }: { params: { id: string } })
             // Fetch ticket details
             const { data: ticketData, error: ticketError } = await supabase
                 .from('tickets')
-                .select('*')
+                .select('*, ticket_metrics(*)')
                 .eq('id', params.id)
                 .single()
 
             if (ticketError) throw ticketError
             setTicket(ticketData)
+            setTicketMetrics(ticketData.ticket_metrics)
 
             // Fetch messages
             const { data: messagesData, error: messagesError } = await supabase
@@ -132,7 +142,7 @@ export default function TicketDetailPage({ params }: { params: { id: string } })
                 .eq('ticket_id', params.id)
 
             if (filesError) throw filesError
-            setFiles(filesData.map(f => f.file))
+            setFiles(filesData.map((f: any) => f.file))
 
             // Check if we should show feedback
             const { data: feedbackData } = await supabase
@@ -345,6 +355,15 @@ export default function TicketDetailPage({ params }: { params: { id: string } })
                             </Tooltip>
                         </TooltipProvider>
                         <span>Created: {new Date(ticket.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <div className="mt-2">
+                        <SLAStatus
+                            firstResponseBreachAt={ticket.first_response_breach_at ? new Date(ticket.first_response_breach_at) : null}
+                            resolutionBreachAt={ticket.resolution_breach_at ? new Date(ticket.resolution_breach_at) : null}
+                            firstResponseTime={ticketMetrics?.first_response_time ? new Date(ticketMetrics.first_response_time) : null}
+                            resolutionTime={ticketMetrics?.resolution_time ? new Date(ticketMetrics.resolution_time) : null}
+                            status={ticket.status}
+                        />
                     </div>
                 </div>
                 <div className="flex gap-2">

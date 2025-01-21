@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 import { notifications } from "@/utils/notifications"
 import { FileUpload } from "@/components/file-upload"
+import { SLAStatus } from "@/components/tickets/sla-status"
 import {
     Tooltip,
     TooltipContent,
@@ -39,6 +40,8 @@ type Ticket = {
     updated_at: string
     creator_id: string
     organization_id: string
+    first_response_breach_at: string | null
+    resolution_breach_at: string | null
 }
 
 type Message = {
@@ -79,6 +82,10 @@ export default function AgentTicketDetailPage({ params }: { params: { id: string
     const [loading, setLoading] = useState(true)
     const [sending, setSending] = useState(false)
     const [isInternal, setIsInternal] = useState(false)
+    const [ticketMetrics, setTicketMetrics] = useState<{
+        first_response_time: string | null
+        resolution_time: string | null
+    } | null>(null)
 
     useEffect(() => {
         fetchTicketAndMessages()
@@ -114,12 +121,13 @@ export default function AgentTicketDetailPage({ params }: { params: { id: string
             // Fetch ticket details
             const { data: ticketData, error: ticketError } = await supabase
                 .from('tickets')
-                .select('*')
+                .select('*, ticket_metrics(*)')
                 .eq('id', params.id)
                 .single()
 
             if (ticketError) throw ticketError
             setTicket(ticketData)
+            setTicketMetrics(ticketData.ticket_metrics)
 
             // Fetch messages
             const { data: messagesData, error: messagesError } = await supabase
@@ -351,6 +359,15 @@ export default function AgentTicketDetailPage({ params }: { params: { id: string
                             </Tooltip>
                         </TooltipProvider>
                         <span>Created: {new Date(ticket.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <div className="mt-2">
+                        <SLAStatus
+                            firstResponseBreachAt={ticket.first_response_breach_at ? new Date(ticket.first_response_breach_at) : null}
+                            resolutionBreachAt={ticket.resolution_breach_at ? new Date(ticket.resolution_breach_at) : null}
+                            firstResponseTime={ticketMetrics?.first_response_time ? new Date(ticketMetrics.first_response_time) : null}
+                            resolutionTime={ticketMetrics?.resolution_time ? new Date(ticketMetrics.resolution_time) : null}
+                            status={ticket.status}
+                        />
                     </div>
                 </div>
                 <div className="flex gap-2">

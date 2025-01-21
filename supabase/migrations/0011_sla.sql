@@ -12,8 +12,7 @@ create table public.sla_policies (
 );
 -- Add SLA fields to tickets table
 alter table public.tickets
-add column priority text not null default 'normal',
-    add column sla_policy_id uuid references public.sla_policies(id),
+add column sla_policy_id uuid references public.sla_policies(id),
     add column first_response_breach_at timestamptz,
     add column resolution_breach_at timestamptz;
 -- Create SLA breach notifications table
@@ -191,3 +190,116 @@ select id as organization_id,
     interval '24 hours' as first_response_time,
     interval '72 hours' as resolution_time
 from organizations;
+-- Create ticket metrics table
+create table if not exists public.ticket_metrics (
+    id uuid primary key default uuid_generate_v4(),
+    ticket_id uuid references public.tickets(id) on delete cascade,
+    first_response_time timestamptz,
+    resolution_time timestamptz,
+    replies_count int not null default 0,
+    reopens_count int not null default 0,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+-- Enable RLS
+alter table ticket_metrics enable row level security;
+-- Create policies for ticket metrics
+create policy "Users can view metrics for tickets in their organization" on ticket_metrics for
+select to authenticated using (
+        ticket_id in (
+            select t.id
+            from tickets t
+            where t.organization_id in (
+                    select organization_id
+                    from profiles
+                    where id = auth.uid()
+                )
+        )
+    );
+create policy "Agents and admins can update metrics" on ticket_metrics for all to authenticated using (
+    exists (
+        select 1
+        from tickets t
+            join profiles p on p.organization_id = t.organization_id
+        where t.id = ticket_id
+            and p.id = auth.uid()
+            and p.role in ('admin', 'agent')
+    )
+);
+-- Function to update ticket metrics
+create or replace function update_ticket_metrics() returns trigger as $$
+declare first_agent_message timestamptz;
+last_customer_message timestamptz;
+ticket_status text;
+ticket_created timestamptz;
+begin -- Get ticket info
+select status,
+    created_at into ticket_status,
+    ticket_created
+from tickets
+where id = new.ticket_id;
+-- Get first agent response time
+select min(created_at) into first_agent_message
+from ticket_messages
+where ticket_id = new.ticket_id
+    and role in ('agent', 'admin');
+-- Get last customer message time
+select max(created_at) into last_customer_message
+from ticket_messages
+where ticket_id = new.ticket_id
+    and role = 'customer';
+-- Update metrics
+update ticket_metrics
+set first_response_time = first_agent_message,
+    resolution_time = case
+        when ticket_status = 'closed' then now()
+        else null
+    end,
+    replies_count = (
+        select count(*)
+        from ticket_messages
+        where ticket_id = new.ticket_id
+    ),
+    reopens_count = (
+        select count(*)
+        from ticket_messages
+        where ticket_id = new.ticket_id
+            and status_change = 'reopened'
+    ),
+    updated_at = now()
+where ticket_id = new.ticket_id;
+-- If no metrics record exists, create one
+if not found then
+insert into ticket_metrics (
+        ticket_id,
+        first_response_time,
+        resolution_time,
+        replies_count,
+        reopens_count
+    )
+values (
+        new.ticket_id,
+        first_agent_message,
+        case
+            when ticket_status = 'closed' then now()
+            else null
+        end,
+        1,
+        0
+    );
+end if;
+return new;
+end;
+$$ language plpgsql security definer;
+-- Create trigger for ticket metrics
+create trigger update_ticket_metrics_on_message
+after
+insert on ticket_messages for each row execute function update_ticket_metrics();
+-- Create trigger for ticket status changes
+create trigger update_ticket_metrics_on_status_change
+after
+update of status on tickets for each row
+    when (
+        old.status is distinct
+        from new.status
+    ) execute function update_ticket_metrics();

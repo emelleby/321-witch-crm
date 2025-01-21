@@ -11,7 +11,9 @@ import {
     Settings,
     LogOut,
     BarChart,
-    UserSquare2
+    UserSquare2,
+    Clock,
+    Tags
 } from "lucide-react"
 import { createClient } from "@/utils/supabase/client"
 import { useRouter } from "next/navigation"
@@ -23,6 +25,8 @@ const navigation = [
     { name: 'Teams', href: '/admin/teams', icon: UserSquare2 },
     { name: 'Organizations', href: '/admin/organizations', icon: Building2 },
     { name: 'Knowledge Base', href: '/admin/knowledge', icon: BookOpen },
+    { name: 'Categories', href: '/admin/categories', icon: Tags },
+    { name: 'SLA', href: '/admin/sla', icon: Clock },
     { name: 'Reports', href: '/admin/reports', icon: BarChart },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
 ]
