@@ -59,7 +59,17 @@ export function LoginForm({
                     <Input id="email" name="email" type="email" placeholder="wicked@witch.house" autoComplete="email" required />
                 </div>
                 <div className="grid gap-2">
-                    <Label htmlFor="password">Password</Label>
+                    <div className="flex items-center justify-between">
+                        <Label htmlFor="password">Password</Label>
+                        <Button
+                            variant="link"
+                            className="text-xs"
+                            type="button"
+                            onClick={() => router.push('/forgot-password')}
+                        >
+                            Forgot password?
+                        </Button>
+                    </div>
                     <Input
                         id="password"
                         name="password"

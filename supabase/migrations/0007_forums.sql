@@ -1,3 +1,6 @@
+-- Enable required extensions
+create extension if not exists "vector";
+create extension if not exists "pg_net" with schema "extensions";
 -- Create forum categories table
 create table public.forum_categories (
     id uuid primary key default uuid_generate_v4(),
@@ -190,25 +193,22 @@ order by trending_score desc
 limit limit_count;
 end;
 $$ language plpgsql security definer;
--- Enable vector extension
-create extension if not exists vector;
 -- Function to generate embeddings (this will call the Edge Function)
-create or replace function generate_forum_embedding(content text) returns vector language plpgsql security definer as $$
+create or replace function generate_forum_embedding(content text) returns vector(1536) language plpgsql security definer as $$
 declare embedding vector(1536);
+response jsonb;
 begin
-select content::vector into embedding
-from (
-        select content
-        from http(
-                (
-                    'POST',
-                    'http://host.docker.internal:54321/functions/v1/generate-embedding',
-                    ARRAY [http_header('Authorization', current_setting('app.edge_secret'))],
-                    'application/json',
-                    json_build_object('text', content)::text
-                )
-            ).content::json->>'embedding'
-    ) as t;
+select result into response
+from extensions.http(
+        (
+            'POST',
+            'http://host.docker.internal:54321/functions/v1/generate-embedding',
+            ARRAY [extensions.http_header('Authorization', current_setting('app.edge_secret'))],
+            'application/json',
+            jsonb_build_object('text', content)::text
+        )::extensions.http_request
+    );
+embedding := (response->>'embedding')::vector(1536);
 return embedding;
 end;
 $$;
