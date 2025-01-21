@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
@@ -9,7 +9,13 @@ import { AutoFocusPlugin } from '@lexical/react/LexicalAutoFocusPlugin'
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin'
 import { ListPlugin } from '@lexical/react/LexicalListPlugin'
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin'
-import { TRANSFORMERS } from '@lexical/markdown'
+import {
+    TRANSFORMERS,
+    $convertFromMarkdownString,
+    $convertToMarkdownString,
+    ElementTransformer,
+    TextMatchTransformer,
+} from '@lexical/markdown'
 import LexicalErrorBoundary from '@lexical/react/LexicalErrorBoundary'
 import { HeadingNode, QuoteNode } from '@lexical/rich-text'
 import { TableCellNode, TableNode, TableRowNode } from '@lexical/table'
@@ -20,12 +26,13 @@ import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html'
 import { ToolbarPlugin } from './plugins/toolbar'
 import { OnChangePlugin } from './plugins/on-change'
 import { cn } from '@/lib/utils'
-import { ImageNode } from './nodes/image-node'
-import { LexicalEditor } from 'lexical'
+import { ImageNode, $createImageNode } from './nodes/image-node'
+import { LexicalEditor, LexicalNode } from 'lexical'
+import { TablePlugin as LexicalTablePlugin } from '@lexical/react/LexicalTablePlugin'
 
 const theme = {
     // Theme styling goes here
-    paragraph: 'my-2',
+    paragraph: 'm-0 p-0',
     text: {
         bold: 'font-bold',
         italic: 'italic',
@@ -75,22 +82,55 @@ interface RichTextEditorProps {
     initialContent?: string
     className?: string
     placeholder?: string
+    minHeight?: string
+    maxHeight?: string
 }
+
+// Extended markdown transformers
+const imageTransformer: TextMatchTransformer = {
+    dependencies: [ImageNode],
+    export: (node: LexicalNode) => {
+        if (node instanceof ImageNode) {
+            return `![${node.__altText}](${node.__src})`
+        }
+        return null
+    },
+    regExp: /!\[(.*?)\]\((.*?)\)/,
+    replace: (textNode, match) => {
+        const [, alt, src] = match
+        const imageNode = $createImageNode({ src, altText: alt })
+        textNode.replace(imageNode)
+    },
+    trigger: ')',
+    type: 'text-match',
+}
+
+const EXTENDED_TRANSFORMERS = [...TRANSFORMERS, imageTransformer]
 
 export function RichTextEditor({
     onChange,
     initialContent = '',
     className,
     placeholder = 'Start writing...',
+    minHeight = '200px',
+    maxHeight = '600px',
 }: RichTextEditorProps) {
     const initialConfig = {
         ...editorConfig,
         editorState: (editor: LexicalEditor) => {
-            const parser = new DOMParser()
-            const dom = parser.parseFromString(initialContent, 'text/html')
-            return () => {
-                const nodes = $generateNodesFromDOM(editor, dom)
-                return nodes
+            // Try to parse as markdown first
+            try {
+                return () => {
+                    $convertFromMarkdownString(initialContent, EXTENDED_TRANSFORMERS)
+                }
+            } catch {
+                // If markdown parsing fails, try HTML
+                const parser = new DOMParser()
+                const dom = parser.parseFromString(initialContent, 'text/html')
+                return () => {
+                    const nodes = $generateNodesFromDOM(editor, dom)
+                    return nodes
+                }
             }
         },
     }
@@ -99,13 +139,30 @@ export function RichTextEditor({
         <LexicalComposer initialConfig={initialConfig}>
             <div className={cn('border rounded-md', className)}>
                 <ToolbarPlugin />
-                <div className="relative min-h-[200px] px-4">
+                <div 
+                    className="relative"
+                    style={{
+                        minHeight,
+                        maxHeight,
+                        resize: 'vertical',
+                        overflow: 'auto'
+                    }}
+                >
                     <RichTextPlugin
                         contentEditable={
-                            <ContentEditable className="min-h-[200px] outline-none py-4" />
+                            <ContentEditable 
+                                className="outline-none px-5 py-[14px] [&_p]:my-0" 
+                                style={{
+                                    minHeight: `calc(${minHeight} - 2rem)`,
+                                    height: '100%',
+                                    lineHeight: '1.5'
+                                }}
+                                aria-required={false}
+                                role="textbox"
+                            />
                         }
                         placeholder={
-                            <div className="absolute top-[17px] left-[20px] text-muted-foreground pointer-events-none">
+                            <div className="absolute top-[14px] left-5 text-muted-foreground pointer-events-none select-none">
                                 {placeholder}
                             </div>
                         }
@@ -115,7 +172,8 @@ export function RichTextEditor({
                     <AutoFocusPlugin />
                     <ListPlugin />
                     <LinkPlugin />
-                    <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
+                    <LexicalTablePlugin />
+                    <MarkdownShortcutPlugin transformers={EXTENDED_TRANSFORMERS} />
                     <OnChangePlugin onChange={onChange} />
                 </div>
             </div>

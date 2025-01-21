@@ -1,0 +1,172 @@
+# Witch House CRM - Cursor AI Development Instructions
+
+## Important Distinction - AI Roles
+
+### Your Role (Cursor AI)
+
+- You are the AI development agent using Cursor
+- Your purpose is to help develop and maintain the codebase
+- You follow these rules and development guidelines
+- You document your development decisions in ai_record.md
+
+### Product AI Features (Separate System)
+
+- The CRM system being built includes AI customer service agents
+- These are separate from you and are part of the product features
+- When developing these features, you are implementing them, not being them
+- Always maintain this distinction in your understanding and documentation
+
+## Project Documentation Structure
+
+### Core Documentation Files
+
+1. **docs/Directory_Structure.md**
+   - Contains complete project structure documentation
+   - Reference for all file and folder organizations
+   - Update when new directories or structural changes occur
+   - Maintain clear hierarchical formatting
+
+2. **docs/Project_Requirements.md**
+   - Source of truth for project requirements
+   - Contains mandatory features
+   - Must be completed before optional features
+   - Exception: Core architectural features needed early
+
+3. **docs/TODO.md**
+   - Living document of all tasks
+   - Organized by feature categories
+   - Format: [ ] for pending, [✅] for completed
+   - Never delete tasks without explicit instruction
+   - Contains "Current Focus" section for priority items
+   - Update status only after owner confirmation
+
+4. **docs/project_owner_notes.md**
+   - Reserved for project owner's ideas and plans
+   - Reference only - do not modify
+   - Contains future enhancement ideas
+   - Used for understanding project direction
+
+5. **docs/ai_record.md**
+   - Your development decision log
+   - Document architectural decisions
+   - Record implementation strategies
+   - Update as project understanding evolves
+   - Keep separate from product AI feature documentation
+
+## Core Project Context
+
+### Technology Stack
+
+- React 19
+- Next.js 15
+- Supabase (latest)
+- Shadcn UI
+- Latest Lexical Editor
+- TailwindCSS
+
+### Brand Identity
+
+- Company Name: Witch House
+- Logo Location: public/images/Shapes 14.png
+- Design Philosophy: Modern tech aesthetic (Shadcn-based) with boho/indie
+  influences
+- Visual Assets: Abstract design elements available in public/images/
+- UI/UX Direction:
+  - Primary: Clean, modern Shadcn components
+  - Secondary: Subtle boho/indie elements for character
+  - Dark theme prioritized with light theme support
+  - Use Shadcn components by default for consistency
+  - Landing page in screenshots serves as design reference
+
+## Operating Guidelines
+
+### Documentation Management
+
+1. When Modifying TODO.md
+   - Maintain existing categories
+   - Keep completed tasks with checkmarks
+   - Add new tasks to appropriate sections
+   - Update "Current Focus" section as needed
+   - Preserve task history
+
+2. When Updating Directory_Structure.md
+   - Keep ASCII tree structure format
+   - Update when adding new directories/files
+   - Maintain consistent indentation
+   - Include brief descriptions
+
+3. When Using ai_record.md
+   - Document key decisions with rationale
+   - Track major implementation choices
+   - Update architectural decisions
+   - Keep separate from product features
+
+4. When Reading project_owner_notes.md
+   - Use for context and future planning
+   - Never modify this file
+   - Reference for understanding project direction
+
+### Technology Usage
+
+1. Lexical Editor
+   - Always use latest version
+   - Request documentation if uncertain
+   - Do not assume deprecated paths/components
+
+2. Shadcn UI
+   - Use whenever possible for consistency
+   - Follow Shadcn patterns and best practices
+   - Maintain uniform styling across components
+
+3. Component Development
+   - Prioritize Shadcn components
+   - Custom components only when necessary
+   - Maintain boho/indie aesthetic within modern framework
+
+### Task Management
+
+1. New Task Process
+   - Add to appropriate section in TODO.md
+   - Use consistent formatting
+   - Update "Current Focus" if priority
+   - Include context and requirements
+
+2. Task Completion
+   - Implement solution
+   - Test thoroughly
+   - Await owner confirmation
+   - Mark with [✅] only after confirmation
+
+### Error Prevention
+
+- Request documentation when uncertain
+- Verify latest package versions
+- Test assumptions before implementation
+- Maintain clear separation between your role and product AI features
+
+## Quality Standards
+
+1. Code Quality
+   - Follow React 19 best practices
+   - Implement proper Next.js 15 patterns
+   - Maintain consistent styling
+   - Optimize for performance
+
+2. UI/UX Standards
+   - Consistent with brand aesthetic
+   - Responsive design
+   - Accessibility compliance
+   - Performance optimization
+
+3. Documentation Quality
+   - Clear and organized
+   - Regular updates
+   - Proper markdown formatting
+   - Comprehensive reasoning
+
+Remember:
+
+1. You are the development AI, helping build the system
+2. The AI customer service agents are features of the system you're building
+3. Keep documentation organized according to the structure above
+4. When in doubt, ask for documentation or clarification

@@ -1,21 +1,24 @@
 'use client'
 
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ImageNode, $createImageNode } from '../nodes/image-node'
 import {
     $getSelection,
     $isRangeSelection,
     FORMAT_TEXT_COMMAND,
     SELECTION_CHANGE_COMMAND,
+    $getNodeByKey,
 } from 'lexical'
 import { $setBlocksType } from '@lexical/selection'
 import {
     $createHeadingNode,
     $createQuoteNode,
     HeadingTagType,
+    $createParagraphNode,
+    $isHeadingNode,
 } from '@lexical/rich-text'
-import { $createListNode, ListNode } from '@lexical/list'
+import { $createListNode, ListNode, $isListNode } from '@lexical/list'
 import { Button } from '@/components/ui/button'
 import {
     Bold,
@@ -44,6 +47,40 @@ import { PreviewPlugin } from './preview'
 export function ToolbarPlugin() {
     const [editor] = useLexicalComposerContext()
     const [isUploading, setIsUploading] = useState(false)
+    const [blockType, setBlockType] = useState<string>('paragraph')
+
+    useEffect(() => {
+        return editor.registerUpdateListener(({ editorState }) => {
+            editorState.read(() => {
+                const selection = $getSelection()
+                if (!$isRangeSelection(selection)) return
+
+                const anchorNode = selection.anchor.getNode()
+                const element =
+                    anchorNode.getKey() === 'root'
+                        ? anchorNode
+                        : anchorNode.getTopLevelElement()
+
+                if (element === null) return
+
+                if ($isHeadingNode(element)) {
+                    const tag = element.getTag()
+                    setBlockType(tag)
+                } else if ($isListNode(element)) {
+                    const parentList = $isListNode(element.getParent()) ? element.getParent() : element
+                    const listType = parentList?.getListType()
+                    setBlockType(listType === 'bullet' ? 'bullet' : 'number')
+                } else {
+                    const type = element.getType()
+                    if (type === 'quote') {
+                        setBlockType('quote')
+                    } else {
+                        setBlockType('paragraph')
+                    }
+                }
+            })
+        })
+    }, [editor])
 
     const formatText = useCallback(
         (format: 'bold' | 'italic' | 'underline' | 'strikethrough') => {
@@ -53,12 +90,24 @@ export function ToolbarPlugin() {
     )
 
     const formatHeading = useCallback(
-        (tag: HeadingTagType) => {
+        (tag: HeadingTagType | 'paragraph') => {
             editor.update(() => {
                 const selection = $getSelection()
                 if ($isRangeSelection(selection)) {
-                    $setBlocksType(selection, () => $createHeadingNode(tag))
+                    // Clear any existing format before setting new block type
+                    selection.getNodes().forEach(node => {
+                        if ($isHeadingNode(node)) {
+                            node.remove()
+                        }
+                    })
+                    
+                    if (tag === 'paragraph') {
+                        $setBlocksType(selection, () => $createParagraphNode())
+                    } else {
+                        $setBlocksType(selection, () => $createHeadingNode(tag))
+                    }
                 }
+                setBlockType(tag)
             })
         },
         [editor]
@@ -216,11 +265,20 @@ export function ToolbarPlugin() {
 
             <Separator orientation="vertical" className="mx-1 h-6" />
 
-            <Select onValueChange={(value) => formatHeading(value as HeadingTagType)}>
+            <Select 
+                value={blockType} 
+                onValueChange={(value) => formatHeading(value as HeadingTagType | 'paragraph')}
+            >
                 <SelectTrigger className="w-[130px] h-8">
-                    <SelectValue placeholder="Style" />
+                    <SelectValue>
+                        {blockType === 'paragraph' && 'Paragraph'}
+                        {blockType === 'h1' && 'Heading 1'}
+                        {blockType === 'h2' && 'Heading 2'}
+                        {blockType === 'h3' && 'Heading 3'}
+                    </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
+                    <SelectItem value="paragraph">Paragraph</SelectItem>
                     <SelectItem value="h1">Heading 1</SelectItem>
                     <SelectItem value="h2">Heading 2</SelectItem>
                     <SelectItem value="h3">Heading 3</SelectItem>

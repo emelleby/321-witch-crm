@@ -1,6 +1,8 @@
 # Witch House CRM Project TODO List
 
-## Authentication & Authorization
+## Core Features
+
+### Authentication & Authorization
 
 - [✅] User registration with email
 - [✅] User login with email/password
@@ -10,11 +12,11 @@
 - [✅] Organization-based access control
 - [✅] Row Level Security (RLS) policies
 
-## Ticket System
+### Ticket Management
 
 - [✅] Create tickets with title, description, and priority
 - [✅] File attachments support
-- [✅] Ticket status management (Open, Closed, etc.)
+- [✅] Ticket status management
 - [✅] Ticket assignment to agents
 - [✅] Internal notes for agents
 - [✅] SLA tracking and management
@@ -26,20 +28,17 @@
 - [ ] Ticket merging
 - [ ] Ticket splitting
 
-## Communication
+### Communication Systems
 
 - [✅] Real-time messaging between agents and customers
 - [✅] File attachments in messages
 - [ ] Canned responses
-- [ ] Email integration for ticket creation and updates
+- [ ] Email integration for ticket creation/updates
 - [ ] Email notifications
 - [ ] Chat widget for website integration
 - [ ] SMS notifications
-- [ ] Sanitization of user input for WYSIWYG editor
-- [ ] Fix bug where unable to remove header style from text in WYSIWYG editor
-- [ ] Preview markdown causes the editor to spazz out and go all over the place.
 
-## Knowledge Base
+### Knowledge Base
 
 - [✅] Article creation and management
 - [✅] Article categories
@@ -51,7 +50,7 @@
 - [ ] Public/private article visibility
 - [ ] Article templates
 
-## Forums
+### Forums
 
 - [✅] Forum categories
 - [✅] Topic creation
@@ -62,7 +61,7 @@
 - [ ] Forum subscriptions
 - [ ] Forum badges and reputation system
 
-## Reporting & Analytics
+### Analytics & Reporting
 
 - [✅] Basic dashboard with key metrics
 - [✅] Ticket statistics
@@ -74,7 +73,9 @@
 - [ ] Time-based analytics
 - [ ] Customer satisfaction metrics
 
-## Administration
+## Technical Infrastructure
+
+### Administration
 
 - [✅] User management
 - [✅] Team management
@@ -88,17 +89,17 @@
 - [ ] System settings configuration
 - [ ] Audit logs
 
-## Integration & API
+### API & Integration
 
 - [✅] Supabase integration
 - [✅] File storage integration
 - [ ] RESTful API endpoints
 - [ ] Webhook support
 - [ ] OAuth2 authentication
-- [ ] Third-party integrations (Slack, etc.)
+- [ ] Third-party integrations
 - [ ] API documentation
 
-## User Experience
+### UI/UX Improvements
 
 - [✅] Responsive design
 - [✅] Dark/light theme support
@@ -110,7 +111,7 @@
 - [ ] Multi-language support
 - [ ] Accessibility compliance
 
-## Notifications
+### Notification System
 
 - [✅] In-app notifications
 - [ ] Email notifications
@@ -119,7 +120,7 @@
 - [ ] Notification preferences
 - [ ] Notification templates
 
-## Extra Features (Not in Original Requirements)
+## AI Features
 
 - [✅] Vector search for knowledge base articles
 - [✅] AI-powered ticket categorization
@@ -129,20 +130,19 @@
 - [ ] AI-generated response suggestions
 - [ ] Sentiment analysis for tickets
 - [ ] AI-powered customer satisfaction prediction
-- [ ] React Native mobile app
 
-# Future Thoughts by Josh
+## Bug Fixes
 
-Once we have all the above features implemented, we should start thinking about
-the following:
+- [ ] Sanitization of user input for WYSIWYG editor
+- [ ] Unable to remove header style from text in WYSIWYG editor
+- [ ] Preview markdown causes editor to misbehave
+- [ ] The preview modal has two exit buttons
+- [ ] "My Tickets" page for customers is stuck in infinite loading
 
-### Expanded CRM
+## Current Focus
 
-## Sales Pipeline and Customer Relationship Management
+Priority items that need immediate attention:
 
-- [ ] Sales pipeline with stages and metrics
-- [ ] Upload sales calls and use AI to transcribe, summarize, extract insights,
-      and generate follow-up actions
-- [ ] AI-powered sales assistant
-- [ ] AI generate sales pitches and proposals and emails based on customer
-      information and history
+1. Fix WYSIWYG editor bugs
+2. Complete ticket management features
+3. Implement email notification system
