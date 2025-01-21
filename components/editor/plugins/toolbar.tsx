@@ -38,6 +38,7 @@ import { CodePlugin } from './code'
 import { TablePlugin } from './table'
 import { createClient } from '@/utils/supabase/client'
 import { notifications } from '@/utils/notifications'
+import { PreviewPlugin } from './preview'
 
 export function ToolbarPlugin() {
     const [editor] = useLexicalComposerContext()
@@ -207,6 +208,10 @@ export function ToolbarPlugin() {
             >
                 <ImageIcon className="h-4 w-4" />
             </Button>
+
+            <Separator orientation="vertical" className="mx-1 h-6" />
+
+            <PreviewPlugin />
 
             <Separator orientation="vertical" className="mx-1 h-6" />
 

@@ -2,8 +2,8 @@ import { Geist } from "next/font/google"
 import { ThemeProvider } from "next-themes"
 import Link from "next/link"
 import { ThemeSwitcher } from "@/components/theme-switcher"
+import { Toaster } from "@/components/providers/toaster"
 import "./globals.css"
-import { Toaster } from "sonner"
 
 const geistSans = Geist({
   display: "swap",
