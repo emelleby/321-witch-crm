@@ -7,6 +7,16 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    esmExternals: true,
+  },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': '.',
+    };
+    return config;
+  },
   /* config options here */
 };
 
