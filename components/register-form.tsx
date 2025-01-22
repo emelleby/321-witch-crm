@@ -36,6 +36,7 @@ export function RegisterForm({
     const organizationDomain = formData.get("organizationDomain") as string;
 
     try {
+      console.log("Starting registration process...");
       // 1. Sign up the user first
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -45,33 +46,14 @@ export function RegisterForm({
         },
       });
 
+      console.log("Auth signup result:", { authData, authError });
+
       if (authError) throw authError;
 
       if (authData.user) {
         try {
-          // Create organization first if needed
-          let organizationId = null;
-          if (hasOrganization && organizationType === "create") {
-            const response = await fetch("/api/organizations", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                name: organizationName,
-                domain: organizationDomain,
-              }),
-            });
-
-            const data = await response.json();
-            if (!response.ok) {
-              throw new Error(data.error || "Failed to create organization");
-            }
-
-            organizationId = data.id;
-          }
-
-          // Create profile
+          console.log("Creating profile...");
+          // Create profile first
           const { error: profileError } = await supabase
             .from("profiles")
             .insert([
@@ -82,11 +64,45 @@ export function RegisterForm({
                   hasOrganization && organizationType === "create"
                     ? "admin"
                     : userType,
-                organization_id: organizationId,
+                // organization_id will be updated after org creation if needed
               },
             ]);
 
+          console.log("Profile creation result:", { profileError });
+
           if (profileError) throw profileError;
+
+          // Then create organization if needed
+          let organizationId = null;
+          if (hasOrganization && organizationType === "create") {
+            console.log("Creating organization...");
+            const { data: orgData, error: orgError } = await supabase
+              .from("organizations")
+              .insert([
+                {
+                  name: organizationName,
+                  domain: organizationDomain,
+                },
+              ])
+              .select()
+              .single();
+
+            console.log("Organization creation result:", { orgData, orgError });
+
+            if (orgError) throw orgError;
+            organizationId = orgData.id;
+
+            console.log("Updating profile with organization...");
+            // Update profile with organization_id
+            const { error: updateError } = await supabase
+              .from("profiles")
+              .update({ organization_id: organizationId })
+              .eq("id", authData.user.id);
+
+            console.log("Profile update result:", { updateError });
+
+            if (updateError) throw updateError;
+          }
 
           router.push("/verify-email");
         } catch (error) {
