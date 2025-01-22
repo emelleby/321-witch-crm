@@ -6,6 +6,7 @@
 
 ## 🌟 Features
 
+
 ### Core CRM Features
 - 🎫 Advanced ticket management with AI-powered routing
 - 📚 Knowledge base with vector search capabilities
