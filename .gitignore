@@ -49,3 +49,7 @@ deno.lock
 
 !components/page-header.tsx
 !hooks/use-auth.ts
+!lib/**
+!app/**
+!hooks/**
+!components/**
