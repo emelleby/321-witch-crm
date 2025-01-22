@@ -52,28 +52,19 @@ export function RegisterForm({
 
       if (authData.user) {
         try {
-          console.log("Creating profile...");
-          // Create profile first
-          const { error: profileError } = await supabase
-            .from("profiles")
-            .insert([
-              {
-                id: authData.user.id,
-                full_name: fullName,
-                role:
-                  hasOrganization && organizationType === "create"
-                    ? "admin"
-                    : userType,
-                // organization_id will be updated after org creation if needed
-              },
-            ]);
-
-          console.log("Profile creation result:", { profileError });
-
-          if (profileError) throw profileError;
-
-          // Then create organization if needed
           let organizationId = null;
+
+          // Sign in the user immediately after signup to get an authenticated session
+          const { error: signInError } = await supabase.auth.signInWithPassword(
+            {
+              email,
+              password,
+            }
+          );
+
+          if (signInError) throw signInError;
+
+          // Create organization first if needed
           if (hasOrganization && organizationType === "create") {
             console.log("Creating organization...");
             const { data: orgData, error: orgError } = await supabase
@@ -91,18 +82,27 @@ export function RegisterForm({
 
             if (orgError) throw orgError;
             organizationId = orgData.id;
-
-            console.log("Updating profile with organization...");
-            // Update profile with organization_id
-            const { error: updateError } = await supabase
-              .from("profiles")
-              .update({ organization_id: organizationId })
-              .eq("id", authData.user.id);
-
-            console.log("Profile update result:", { updateError });
-
-            if (updateError) throw updateError;
           }
+
+          // Then create profile
+          console.log("Creating profile...");
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .insert([
+              {
+                id: authData.user.id,
+                full_name: fullName,
+                role:
+                  hasOrganization && organizationType === "create"
+                    ? "admin"
+                    : userType,
+                organization_id: organizationId,
+              },
+            ]);
+
+          console.log("Profile creation result:", { profileError });
+
+          if (profileError) throw profileError;
 
           router.push("/verify-email");
         } catch (error) {
