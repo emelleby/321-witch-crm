@@ -46,3 +46,6 @@ next-env.d.ts
 .deno
 deno.lock
 !supabase/functions/**/deno.lock
+
+!components/page-header.tsx
+!hooks/use-auth.ts
