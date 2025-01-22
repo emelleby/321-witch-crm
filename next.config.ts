@@ -1,6 +1,5 @@
-import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
+import path from 'path';
+const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -13,11 +12,10 @@ const nextConfig: NextConfig = {
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': '.',
+      '@': path.join(__dirname),
     };
     return config;
   },
-  /* config options here */
 };
 
-export default nextConfig;
+module.exports = nextConfig;
