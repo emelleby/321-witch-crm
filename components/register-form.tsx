@@ -24,9 +24,13 @@ export function RegisterForm({
   const [userType, setUserType] = useState("customer");
   const [hasOrganization, setHasOrganization] = useState(false);
   const [organizationType, setOrganizationType] = useState("join");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
 
     const email = formData.get("email") as string;
@@ -43,6 +47,14 @@ export function RegisterForm({
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            full_name: fullName,
+            user_type: userType,
+            organization_name:
+              organizationType === "create" ? organizationName : null,
+            organization_domain:
+              organizationType === "create" ? organizationDomain : null,
+          },
         },
       });
 
@@ -53,16 +65,6 @@ export function RegisterForm({
       if (authData.user) {
         try {
           let organizationId = null;
-
-          // Sign in the user immediately after signup to get an authenticated session
-          const { error: signInError } = await supabase.auth.signInWithPassword(
-            {
-              email,
-              password,
-            }
-          );
-
-          if (signInError) throw signInError;
 
           // Create organization first if needed
           if (hasOrganization && organizationType === "create") {
@@ -117,6 +119,8 @@ export function RegisterForm({
       } else {
         alert("An error occurred during registration");
       }
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
