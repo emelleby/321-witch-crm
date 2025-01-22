@@ -1,229 +1,254 @@
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useRouter } from "next/navigation"
-import { FormEvent, useState } from "react"
-import { createClient } from "@/utils/supabase/client"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
+import { createClient } from "@/utils/supabase/client";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function RegisterForm({
-    className,
-    ...props
+  className,
+  ...props
 }: React.ComponentPropsWithoutRef<"form">) {
-    const router = useRouter()
-    const supabase = createClient()
-    const [password, setPassword] = useState("")
-    const [userType, setUserType] = useState("customer")
-    const [hasOrganization, setHasOrganization] = useState(false)
-    const [organizationType, setOrganizationType] = useState("join")
+  const router = useRouter();
+  const supabase = createClient();
+  const [password, setPassword] = useState("");
+  const [userType, setUserType] = useState("customer");
+  const [hasOrganization, setHasOrganization] = useState(false);
+  const [organizationType, setOrganizationType] = useState("join");
 
-    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault()
-        const formData = new FormData(event.currentTarget)
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
 
-        const email = formData.get('email') as string
-        const fullName = formData.get('fullName') as string
-        const password = formData.get('password') as string
-        const organizationName = formData.get('organizationName') as string
-        const organizationDomain = formData.get('organizationDomain') as string
+    const email = formData.get("email") as string;
+    const fullName = formData.get("fullName") as string;
+    const password = formData.get("password") as string;
+    const organizationName = formData.get("organizationName") as string;
+    const organizationDomain = formData.get("organizationDomain") as string;
 
+    try {
+      // 1. Sign up the user first
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (authError) throw authError;
+
+      if (authData.user) {
         try {
-            // 1. Sign up the user first
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    emailRedirectTo: `${window.location.origin}/auth/callback`
-                }
-            })
+          // Create organization first if needed
+          let organizationId = null;
+          if (hasOrganization && organizationType === "create") {
+            const response = await fetch("/api/organizations", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                name: organizationName,
+                domain: organizationDomain,
+              }),
+            });
 
-            if (authError) throw authError
-
-            if (authData.user) {
-                let organizationId = null
-
-                // 2. Create organization if needed
-                if (hasOrganization && organizationType === 'create') {
-                    const { data: orgData, error: orgError } = await supabase
-                        .from('organizations')
-                        .insert([
-                            {
-                                name: organizationName,
-                                domain: organizationDomain,
-                            }
-                        ])
-                        .select()
-                        .single()
-
-                    if (orgError) throw orgError
-                    organizationId = orgData.id
-                }
-
-                // 3. Create profile
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .insert([
-                        {
-                            id: authData.user.id,
-                            full_name: fullName,
-                            organization_id: organizationId,
-                            role: userType as "customer" | "agent" | "admin"
-                        }
-                    ])
-
-                if (profileError) throw profileError
-
-                router.push('/verify-email')
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.error || "Failed to create organization");
             }
+
+            organizationId = data.id;
+          }
+
+          // Create profile
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .insert([
+              {
+                id: authData.user.id,
+                full_name: fullName,
+                role:
+                  hasOrganization && organizationType === "create"
+                    ? "admin"
+                    : userType,
+                organization_id: organizationId,
+              },
+            ]);
+
+          if (profileError) throw profileError;
+
+          router.push("/verify-email");
         } catch (error) {
-            console.error('Registration Error:', error)
-            alert(error.message || 'An error occurred during registration')
+          console.error("Error:", error);
+          throw error;
         }
+      }
+    } catch (error) {
+      console.error("Registration Error:", error);
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert("An error occurred during registration");
+      }
     }
+  }
 
-    return (
-        <form onSubmit={handleSubmit} className={cn("flex flex-col gap-6", className)} {...props}>
-            <div className="grid gap-6">
-                <div className="grid gap-2">
-                    <Label htmlFor="fullName">Full Name</Label>
-                    <Input
-                        id="fullName"
-                        name="fullName"
-                        type="text"
-                        placeholder="Salem Witch"
-                        required
-                    />
-                </div>
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className={cn("flex flex-col gap-6", className)}
+      {...props}
+    >
+      <div className="grid gap-6">
+        <div className="grid gap-2">
+          <Label htmlFor="fullName">Full Name</Label>
+          <Input
+            id="fullName"
+            name="fullName"
+            type="text"
+            placeholder="Salem Witch"
+            required
+          />
+        </div>
 
-                <div className="grid gap-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        placeholder="wicked@witch.house"
-                        autoComplete="email"
-                        required
-                    />
-                </div>
+        <div className="grid gap-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="wicked@witch.house"
+            autoComplete="email"
+            required
+          />
+        </div>
 
-                <div className="grid gap-2">
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                        id="password"
-                        name="password"
-                        type="password"
-                        minLength={8}
-                        required
-                        onChange={(e) => setPassword(e.target.value)}
-                        value={password}
-                    />
-                    {password && password.length < 8 && (
-                        <p className="text-xs text-muted-foreground">
-                            Password must be at least 8 characters
-                        </p>
-                    )}
-                </div>
+        <div className="grid gap-2">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            minLength={8}
+            required
+            onChange={(e) => setPassword(e.target.value)}
+            value={password}
+          />
+          {password && password.length < 8 && (
+            <p className="text-xs text-muted-foreground">
+              Password must be at least 8 characters
+            </p>
+          )}
+        </div>
 
-                <div className="grid gap-2">
-                    <Label>Account Type</Label>
-                    <RadioGroup
-                        defaultValue="customer"
-                        onValueChange={setUserType}
-                        className="flex flex-col space-y-1"
-                    >
-                        <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="customer" id="customer" />
-                            <Label htmlFor="customer">Customer</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="agent" id="agent" />
-                            <Label htmlFor="agent">Support Agent</Label>
-                        </div>
-                    </RadioGroup>
-                </div>
+        <div className="grid gap-2">
+          <Label>Account Type</Label>
+          <RadioGroup
+            defaultValue="customer"
+            onValueChange={setUserType}
+            className="flex flex-col space-y-1"
+          >
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="customer" id="customer" />
+              <Label htmlFor="customer">Customer</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="agent" id="agent" />
+              <Label htmlFor="agent">Support Agent</Label>
+            </div>
+          </RadioGroup>
+        </div>
 
-                {userType === 'agent' && (
-                    <div className="grid gap-4">
-                        <div className="flex items-center space-x-2">
-                            <Label>Organization</Label>
-                            <Select
-                                onValueChange={(value) => {
-                                    setHasOrganization(true)
-                                    setOrganizationType(value)
-                                }}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select option" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="join">Join existing organization</SelectItem>
-                                    <SelectItem value="create">Create new organization</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        {hasOrganization && organizationType === 'create' && (
-                            <>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="organizationName">Organization Name</Label>
-                                    <Input
-                                        id="organizationName"
-                                        name="organizationName"
-                                        type="text"
-                                        required
-                                    />
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label htmlFor="organizationDomain">Organization Domain</Label>
-                                    <Input
-                                        id="organizationDomain"
-                                        name="organizationDomain"
-                                        type="text"
-                                        placeholder="company.com"
-                                        required
-                                    />
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )}
-
-                <Button type="submit" className="w-full">
-                    Create Account
-                </Button>
-
-                <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
-                    <span className="relative z-10 bg-background px-2 text-muted-foreground">
-                        Or continue with
-                    </span>
-                </div>
-
-                <Button variant="outline" className="w-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <path
-                            d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
-                            fill="currentColor"
-                        />
-                    </svg>
-                    Sign up with GitHub
-                </Button>
+        {userType === "agent" && (
+          <div className="grid gap-4">
+            <div className="flex items-center space-x-2">
+              <Label>Organization</Label>
+              <Select
+                onValueChange={(value) => {
+                  setHasOrganization(true);
+                  setOrganizationType(value);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select option" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="join">
+                    Join existing organization
+                  </SelectItem>
+                  <SelectItem value="create">
+                    Create new organization
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="text-center text-sm">
-                Already have an account?{" "}
-                <a href="/login" className="underline underline-offset-4">
-                    Login
-                </a>
-            </div>
-        </form>
-    )
+            {hasOrganization && organizationType === "create" && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="organizationName">Organization Name</Label>
+                  <Input
+                    id="organizationName"
+                    name="organizationName"
+                    type="text"
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="organizationDomain">
+                    Organization Domain
+                  </Label>
+                  <Input
+                    id="organizationDomain"
+                    name="organizationDomain"
+                    type="text"
+                    placeholder="company.com"
+                    required
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <Button type="submit" className="w-full">
+          Create Account
+        </Button>
+
+        <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
+          <span className="relative z-10 bg-background px-2 text-muted-foreground">
+            Or continue with
+          </span>
+        </div>
+
+        <Button variant="outline" className="w-full">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path
+              d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
+              fill="currentColor"
+            />
+          </svg>
+          Sign up with GitHub
+        </Button>
+      </div>
+
+      <div className="text-center text-sm">
+        Already have an account?{" "}
+        <a href="/login" className="underline underline-offset-4">
+          Login
+        </a>
+      </div>
+    </form>
+  );
 }

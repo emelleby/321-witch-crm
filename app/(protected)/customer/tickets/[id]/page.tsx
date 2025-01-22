@@ -60,11 +60,11 @@ type AttachmentFile = {
   storage_path: string;
 };
 
-export default function TicketDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+type TicketDetailClientProps = {
+  ticketId: string;
+};
+
+function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
   const router = useRouter();
   const supabase = createClient();
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -92,7 +92,7 @@ export default function TicketDetailPage({
           event: "*",
           schema: "public",
           table: "ticket_messages",
-          filter: "ticket_id=eq." + params.id,
+          filter: "ticket_id=eq." + ticketId,
         },
         (payload) => {
           const newMessage = payload.new as Message;
@@ -107,7 +107,7 @@ export default function TicketDetailPage({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [params.id]);
+  }, [ticketId]);
 
   const fetchTicketAndMessages = async () => {
     try {
@@ -115,7 +115,7 @@ export default function TicketDetailPage({
       const { data: ticketData, error: ticketError } = await supabase
         .from("tickets")
         .select("*, ticket_metrics(*)")
-        .eq("id", params.id)
+        .eq("id", ticketId)
         .single();
 
       if (ticketError) throw ticketError;
@@ -126,7 +126,7 @@ export default function TicketDetailPage({
       const { data: messagesData, error: messagesError } = await supabase
         .from("ticket_messages")
         .select("*")
-        .eq("ticket_id", params.id)
+        .eq("ticket_id", ticketId)
         .order("created_at", { ascending: true });
 
       if (messagesError) throw messagesError;
@@ -145,7 +145,7 @@ export default function TicketDetailPage({
                     )
                 `
         )
-        .eq("ticket_id", params.id);
+        .eq("ticket_id", ticketId);
 
       if (filesError) throw filesError;
       setFiles(filesData.map((f: any) => f.file));
@@ -154,7 +154,7 @@ export default function TicketDetailPage({
       const { data: feedbackData } = await supabase
         .from("ticket_feedback")
         .select("id")
-        .eq("ticket_id", params.id)
+        .eq("ticket_id", ticketId)
         .single();
 
       setShowFeedback(ticketData.status === "closed" && !feedbackData);
@@ -171,7 +171,7 @@ export default function TicketDetailPage({
       await supabase
         .from("ticket_messages")
         .update({ read_by_customer: true })
-        .eq("ticket_id", params.id)
+        .eq("ticket_id", ticketId)
         .neq("role", "customer");
     } catch (error) {
       console.error("Error marking messages as read:", error);
@@ -199,7 +199,7 @@ export default function TicketDetailPage({
         const { error: messageError } = await supabase
           .from("ticket_messages")
           .insert({
-            ticket_id: params.id,
+            ticket_id: ticketId,
             message_body: newMessage,
             role: "customer",
           });
@@ -213,7 +213,7 @@ export default function TicketDetailPage({
           .from("ticket_files")
           .insert(
             newFileIds.map((fileId) => ({
-              ticket_id: params.id,
+              ticket_id: ticketId,
               file_id: fileId,
             }))
           );
@@ -236,7 +236,7 @@ export default function TicketDetailPage({
       const { error } = await supabase
         .from("tickets")
         .update({ status: "closed" })
-        .eq("id", params.id);
+        .eq("id", ticketId);
 
       if (error) throw error;
 
@@ -253,7 +253,7 @@ export default function TicketDetailPage({
       const { error } = await supabase
         .from("tickets")
         .update({ status: "open" })
-        .eq("id", params.id);
+        .eq("id", ticketId);
 
       if (error) throw error;
 
@@ -511,7 +511,7 @@ export default function TicketDetailPage({
 
         {ticket.status !== "closed" ? (
           <div className="space-y-4">
-            <FileUpload ticketId={params.id} onUploadComplete={setNewFileIds} />
+            <FileUpload ticketId={ticketId} onUploadComplete={setNewFileIds} />
             <div className="space-y-2">
               <Textarea
                 placeholder="Type your message..."
@@ -533,11 +533,20 @@ export default function TicketDetailPage({
           </div>
         ) : showFeedback ? (
           <TicketFeedback
-            ticketId={params.id}
+            ticketId={ticketId}
             onFeedbackSubmit={() => setShowFeedback(false)}
           />
         ) : null}
       </div>
     </div>
   );
+}
+
+// Server Component wrapper
+export default function TicketDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  return <TicketDetailClient ticketId={params.id} />;
 }

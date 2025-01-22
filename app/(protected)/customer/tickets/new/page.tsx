@@ -79,7 +79,7 @@ export default function NewTicketPage() {
   }, []);
 
   useEffect(() => {
-    if (description) {
+    if (description && description.length >= 3) {
       // Clear any existing timeout
       if (searchTimeout) {
         clearTimeout(searchTimeout);
@@ -103,23 +103,12 @@ export default function NewTicketPage() {
 
   const fetchOrganizations = async () => {
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError) {
-        notifications.error("Failed to authenticate user");
-        throw userError;
-      }
-      if (!user) {
-        notifications.error("No authenticated user found");
-        return;
-      }
-
       const { data, error } = await supabase
         .from("organizations")
         .select("id, name")
         .order("name");
+    
+        console.log(data)
 
       if (error) {
         notifications.error("Failed to load organizations");
@@ -127,11 +116,6 @@ export default function NewTicketPage() {
       }
 
       setOrganizations(data || []);
-
-      // If user belongs to only one organization, select it by default
-      if (data?.length === 1) {
-        setOrganizationId(data[0].id);
-      }
     } catch (error) {
       console.error("Error fetching organizations:", error);
     }
@@ -268,58 +252,72 @@ export default function NewTicketPage() {
       notifications.error("Please fill in all required fields");
       return;
     }
-
+  
     setSubmitting(true);
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-
+  
       // Generate embedding first
       const combinedText = `Subject: ${subject.trim()} Description: ${description.trim()} Priority: ${priority}`;
       const { data: embeddingData, error: embeddingError } =
         await supabase.functions.invoke("generate_embeddings", {
           body: { text: combinedText },
         });
+  
+      if (embeddingError) {
+        console.error('Embedding error:', embeddingError);
+        throw embeddingError;
+      }
 
-      if (embeddingError) throw embeddingError;
-
+      console.log(subject.trim(), description, priority, user.id, organizationId)
+      const embedding = Array.from(embeddingData.embedding)
+  
       // Create ticket with embedding
-      const { data: ticket, error: ticketError } = await supabase
-        .from("tickets")
+      const { data: ticket, error: ticketError } = await supabase.from('tickets')
         .insert({
           subject: subject.trim(),
           description: description.trim(),
           priority,
           creator_id: user.id,
           organization_id: organizationId || null,
-          content_embedding: embeddingData.embedding,
+          content_embedding: embedding,
         })
-        .select()
+        .select('*')
         .single();
-
+  
+      console.log('Ticket creation attempt:', {
+        ticketError,
+        ticketErrorDetails: ticketError?.details,
+        ticket
+      });
+  
       if (ticketError) throw ticketError;
-
+  
       // Link files to ticket if any
-      if (fileIds.length > 0) {
+      if (fileIds.length > 0 && ticket) {
         const { error: filesError } = await supabase
-          .from("ticket_files")
+          .from('ticket_files')
           .insert(
             fileIds.map((fileId) => ({
               ticket_id: ticket.id,
               file_id: fileId,
             }))
           );
-
-        if (filesError) throw filesError;
+  
+        if (filesError) {
+          console.error('Files error:', filesError);
+          throw filesError;
+        }
       }
-
+  
       notifications.success("Ticket created successfully");
       router.push(`/customer/tickets/${ticket.id}`);
     } catch (error) {
       console.error("Submit error:", error);
-      notifications.error("Failed to create ticket");
+      notifications.error(error.message || "Failed to create ticket");
     } finally {
       setSubmitting(false);
     }
@@ -349,8 +347,12 @@ export default function NewTicketPage() {
         >
           <div className="space-y-2">
             <label className="text-sm font-medium">Organization</label>
-            <Select value={organizationId} onValueChange={setOrganizationId}>
-              <SelectTrigger>
+            <Select 
+              value={organizationId} 
+              onValueChange={setOrganizationId}
+              defaultValue={organizations[0]?.id}
+            >
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select an organization" />
               </SelectTrigger>
               <SelectContent>

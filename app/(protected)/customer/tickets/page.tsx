@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -32,10 +32,50 @@ export default function TicketsPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchOrganizations = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase.from('organizations').select('id, name').order('name');
+
+      if (error) throw error;
+      setOrganizations(data);
+    } catch (error) {
+      console.error('Error fetching organizations:', error);
+    }
+  }, [supabase]);
+
+  const fetchTickets = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('creator_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setTickets(data);
+    } catch (error) {
+      notifications.error('Failed to load tickets');
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
+
   useEffect(() => {
     fetchOrganizations();
     fetchTickets();
-  }, [fetchOrganizations, fetchTickets, supabase]);
+  }, [fetchOrganizations, fetchTickets]);
 
   useEffect(() => {
     // Subscribe to real-time updates
@@ -66,46 +106,6 @@ export default function TicketsPage() {
       supabase.removeChannel(channel);
     };
   }, []);
-
-  const fetchOrganizations = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase.from('organizations').select('id, name').order('name');
-
-      if (error) throw error;
-      setOrganizations(data);
-    } catch (error) {
-      console.error('Error fetching organizations:', error);
-    }
-  };
-
-  const fetchTickets = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('creator_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setTickets(data);
-    } catch (error) {
-      notifications.error('Failed to load tickets');
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSearch = async (filters: any) => {
     try {
