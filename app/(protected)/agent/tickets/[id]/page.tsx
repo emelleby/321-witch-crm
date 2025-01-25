@@ -1,16 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { useRouter } from 'next/navigation';
-import { notifications } from '@/utils/notifications';
-import { FileUpload } from '@/components/file-upload';
-import { SLAStatus } from '@/components/tickets/sla-status';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+
+import { FileUpload } from "@/components/file-upload";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,172 +14,130 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-type Ticket = {
-  id: string;
-  subject: string;
-  description: string;
-  status: 'open' | 'pending' | 'closed';
-  priority: 'low' | 'normal' | 'high';
-  created_at: string;
-  updated_at: string;
-  creator_id: string;
-  organization_id: string;
-  first_response_breach_at: string | null;
-  resolution_breach_at: string | null;
+type Ticket = Database["public"]["Tables"]["support_tickets"]["Row"];
+type Message = Database["public"]["Tables"]["ticket_messages"]["Row"];
+type AttachmentFile = Database["public"]["Tables"]["uploaded_files"]["Row"];
+
+type FileAttachment = Pick<
+  Database["public"]["Tables"]["uploaded_files"]["Row"],
+  "file_id" | "file_name" | "file_type" | "storage_path"
+>;
+
+type FileJoinResult = {
+  file: FileAttachment;
 };
 
-type Message = {
-  id: string;
-  ticket_id: string;
-  message_body: string;
-  role: 'customer' | 'agent' | 'admin';
-  created_at: string;
-  read_by_customer: boolean;
-  read_by_agent: boolean;
-  is_internal: boolean;
-};
-
-type FileData = {
-  file: {
-    id: string;
-    file_name: string;
-    content_type: string;
-    storage_path: string;
-  };
-};
-
-type AttachmentFile = {
-  id: string;
-  file_name: string;
-  content_type: string;
-  storage_path: string;
-};
-
-// Update the page props interface
-type PageProps = {
-  params: {
-    id: string;
-  };
-  searchParams?: { [key: string]: string | string[] | undefined };
-};
+interface PageProps {
+  params: { id: string };
+}
 
 export default function AgentTicketDetailPage({ params }: PageProps) {
-  // Rest of your component code remains exactly the same
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [files, setFiles] = useState<AttachmentFile[]>([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [files, setFiles] = useState<FileAttachment[]>([]);
+  const [newMessage, setNewMessage] = useState("");
   const [newFileIds, setNewFileIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [isInternal, setIsInternal] = useState(false);
-  const [ticketMetrics, setTicketMetrics] = useState<{
-    first_response_time: string | null;
-    resolution_time: string | null;
-  } | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    fetchTicketAndMessages();
-    markMessagesAsRead();
-
-    const channel = supabase
-      .channel('ticket-detail')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ticket_messages',
-          filter: 'ticket_id=eq.' + params.id,
-        },
-        (payload) => {
-          const newMessage = payload.new as Message;
-          setMessages((prev) => [...prev, newMessage]);
-          if (newMessage.role === 'customer') {
-            markMessageAsRead(newMessage.id);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [params.id]);
-
-  const fetchTicketAndMessages = async () => {
+  const fetchTicketAndMessages = useCallback(async () => {
     try {
       // Fetch ticket details
       const { data: ticketData, error: ticketError } = await supabase
-        .from('tickets')
-        .select('*, ticket_metrics(*)')
-        .eq('id', params.id)
+        .from("support_tickets")
+        .select("*")
+        .eq("ticket_id", params.id)
         .single();
 
       if (ticketError) throw ticketError;
       setTicket(ticketData);
-      setTicketMetrics(ticketData.ticket_metrics);
 
       // Fetch messages
       const { data: messagesData, error: messagesError } = await supabase
-        .from('ticket_messages')
-        .select('*')
-        .eq('ticket_id', params.id)
-        .order('created_at', { ascending: true });
+        .from("ticket_messages")
+        .select("*")
+        .eq("ticket_id", params.id)
+        .order("created_at", { ascending: true });
 
       if (messagesError) throw messagesError;
       setMessages(messagesData);
 
       // Fetch files
       const { data: filesData, error: filesError } = await supabase
-        .from('ticket_files')
+        .from("ticket_file_attachments")
         .select(
           `
-                    file:files (
-                        id,
-                        file_name,
-                        content_type,
-                        storage_path
-                    )
-                `
+            file:uploaded_files (
+              file_id,
+              file_name,
+              file_type,
+              storage_path
+            )
+          `
         )
-        .eq('ticket_id', params.id);
+        .eq("ticket_id", params.id);
 
       if (filesError) throw filesError;
-      setFiles(filesData.map((f: any) => f.file));
+      setFiles(filesData.map((f: FileJoinResult) => f.file));
     } catch (error) {
-      notifications.error('Failed to load ticket details');
-      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load ticket details",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id, supabase, toast]);
 
-  const markMessagesAsRead = async () => {
+  const markMessagesAsRead = useCallback(async () => {
     try {
       await supabase
-        .from('ticket_messages')
-        .update({ read_by_agent: true })
-        .eq('ticket_id', params.id)
-        .eq('role', 'customer');
+        .from("ticket_messages")
+        .update({ agent_has_read: true })
+        .eq("ticket_id", params.id)
+        .eq("sender_user_id", "customer");
     } catch (error) {
-      console.error('Error marking messages as read:', error);
+      console.error("Error marking messages as read:", error);
     }
-  };
+  }, [params.id, supabase]);
 
-  const markMessageAsRead = async (messageId: string) => {
-    try {
-      await supabase.from('ticket_messages').update({ read_by_agent: true }).eq('id', messageId);
-    } catch (error) {
-      console.error('Error marking message as read:', error);
-    }
-  };
+  const markMessageAsRead = useCallback(
+    async (messageId: string) => {
+      try {
+        await supabase
+          .from("ticket_messages")
+          .update({ agent_has_read: true })
+          .eq("message_id", messageId);
+      } catch (error) {
+        console.error("Error marking message as read:", error);
+      }
+    },
+    [supabase]
+  );
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() && newFileIds.length === 0) return;
@@ -195,34 +146,41 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
     try {
       // Add message if there is one
       if (newMessage.trim()) {
-        const { error: messageError } = await supabase.from('ticket_messages').insert({
-          ticket_id: params.id,
-          message_body: newMessage,
-          role: 'agent',
-          is_internal: isInternal,
-        });
+        const { error: messageError } = await supabase
+          .from("ticket_messages")
+          .insert({
+            ticket_id: params.id,
+            message_content: newMessage,
+            sender_user_id: "agent",
+            is_internal_note: isInternal,
+          });
 
         if (messageError) throw messageError;
       }
 
       // Link files if any
       if (newFileIds.length > 0) {
-        const { error: filesError } = await supabase.from('ticket_files').insert(
-          newFileIds.map((fileId) => ({
-            ticket_id: params.id,
-            file_id: fileId,
-          }))
-        );
+        const { error: filesError } = await supabase
+          .from("ticket_file_attachments")
+          .insert(
+            newFileIds.map((fileId) => ({
+              ticket_id: params.id,
+              file_id: fileId,
+            }))
+          );
 
         if (filesError) throw filesError;
       }
 
-      setNewMessage('');
+      setNewMessage("");
       setNewFileIds([]);
-      setIsInternal(false);
     } catch (error) {
-      notifications.error('Failed to send message');
-      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send message",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     } finally {
       setSending(false);
     }
@@ -231,72 +189,126 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
   const handleCloseTicket = async () => {
     try {
       const { error } = await supabase
-        .from('tickets')
-        .update({ status: 'closed' })
-        .eq('id', params.id);
+        .from("support_tickets")
+        .update({ ticket_status: "closed" })
+        .eq("ticket_id", params.id);
 
       if (error) throw error;
 
-      setTicket((prev) => (prev ? { ...prev, status: 'closed' } : null));
-      notifications.success('Ticket closed successfully');
+      setTicket((prev) => (prev ? { ...prev, ticket_status: "closed" } : null));
+      toast({
+        title: "Success",
+        description: "Ticket closed successfully",
+        variant: "default",
+      });
     } catch (error) {
-      notifications.error('Failed to close ticket');
-      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to close ticket",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     }
   };
 
   const handleReopenTicket = async () => {
     try {
       const { error } = await supabase
-        .from('tickets')
-        .update({ status: 'open' })
-        .eq('id', params.id);
+        .from("support_tickets")
+        .update({ ticket_status: "open" })
+        .eq("ticket_id", params.id);
 
       if (error) throw error;
 
-      setTicket((prev) => (prev ? { ...prev, status: 'open' } : null));
-      notifications.success('Ticket reopened successfully');
+      setTicket((prev) => (prev ? { ...prev, ticket_status: "open" } : null));
+      toast({
+        title: "Success",
+        description: "Ticket reopened successfully",
+        variant: "default",
+      });
     } catch (error) {
-      notifications.error('Failed to reopen ticket');
-      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to reopen ticket",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     }
   };
 
   const getFileUrl = async (path: string) => {
-    const { data } = supabase.storage.from('attachments').getPublicUrl(path);
+    const { data } = supabase.storage.from("attachments").getPublicUrl(path);
     return data.publicUrl;
   };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high':
-        return 'bg-red-500';
-      case 'normal':
-        return 'bg-yellow-500';
-      case 'low':
-        return 'bg-green-500';
+      case "high":
+        return "bg-red-500";
+      case "normal":
+        return "bg-yellow-500";
+      case "low":
+        return "bg-green-500";
       default:
-        return 'bg-gray-500';
+        return "bg-gray-500";
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'open':
-        return 'bg-green-500';
-      case 'pending':
-        return 'bg-yellow-500';
-      case 'closed':
-        return 'bg-gray-500';
+      case "open":
+        return "bg-green-500";
+      case "waiting_on_customer":
+        return "bg-yellow-500";
+      case "closed":
+        return "bg-gray-500";
       default:
-        return 'bg-gray-500';
+        return "bg-gray-500";
     }
   };
+
+  useEffect(() => {
+    fetchTicketAndMessages();
+    markMessagesAsRead();
+
+    // Set up realtime subscription
+    const channel = supabase
+      .channel(`ticket-${params.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ticket_messages",
+          filter: `ticket_id=eq.${params.id}`,
+        },
+        async (payload) => {
+          if (payload.eventType === "INSERT") {
+            const message = payload.new as Message;
+            if (message.sender_user_id === "customer") {
+              await markMessageAsRead(message.message_id);
+            }
+            setMessages((prev) => [...prev, message]);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [
+    fetchTicketAndMessages,
+    markMessagesAsRead,
+    markMessageAsRead,
+    params.id,
+    supabase,
+  ]);
 
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -306,7 +318,10 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold">Ticket not found</h2>
-          <Button className="mt-4" onClick={() => router.push('/agent/tickets')}>
+          <Button
+            className="mt-4"
+            onClick={() => router.push("/agent/tickets")}
+          >
             Back to tickets
           </Button>
         </div>
@@ -318,21 +333,30 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{ticket.subject}</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {ticket.ticket_title}
+          </h1>
           <div className="mt-2 flex gap-4 text-sm text-muted-foreground">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-2">
                     Priority:
-                    <div className={`h-2 w-2 rounded-full ${getPriorityColor(ticket.priority)}`} />
-                    {ticket.priority}
+                    <div
+                      className={`h-2 w-2 rounded-full ${getPriorityColor(
+                        ticket.ticket_priority
+                      )}`}
+                    />
+                    {ticket.ticket_priority}
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {ticket.priority === 'high' && 'Urgent issue requiring immediate attention'}
-                  {ticket.priority === 'normal' && 'Standard priority issue'}
-                  {ticket.priority === 'low' && 'Non-urgent issue that can be addressed later'}
+                  {ticket.ticket_priority === "high" &&
+                    "Urgent issue requiring immediate attention"}
+                  {ticket.ticket_priority === "normal" &&
+                    "Standard priority issue"}
+                  {ticket.ticket_priority === "low" &&
+                    "Non-urgent issue that can be addressed later"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -341,41 +365,31 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-2">
                     Status:
-                    <div className={`h-2 w-2 rounded-full ${getStatusColor(ticket.status)}`} />
-                    {ticket.status}
+                    <div
+                      className={`h-2 w-2 rounded-full ${getStatusColor(
+                        ticket.ticket_status
+                      )}`}
+                    />
+                    {ticket.ticket_status}
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {ticket.status === 'open' && 'Ticket is active and awaiting response'}
-                  {ticket.status === 'pending' && 'Ticket is awaiting customer response'}
-                  {ticket.status === 'closed' && 'Ticket has been resolved'}
+                  {ticket.ticket_status === "open" &&
+                    "Ticket is active and awaiting response"}
+                  {ticket.ticket_status === "waiting_on_customer" &&
+                    "Ticket is awaiting customer response"}
+                  {ticket.ticket_status === "closed" &&
+                    "Ticket has been resolved"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <span>Created: {new Date(ticket.created_at).toLocaleDateString()}</span>
-          </div>
-          <div className="mt-2">
-            <SLAStatus
-              firstResponseBreachAt={
-                ticket.first_response_breach_at ? new Date(ticket.first_response_breach_at) : null
-              }
-              resolutionBreachAt={
-                ticket.resolution_breach_at ? new Date(ticket.resolution_breach_at) : null
-              }
-              firstResponseTime={
-                ticketMetrics?.first_response_time
-                  ? new Date(ticketMetrics.first_response_time)
-                  : null
-              }
-              resolutionTime={
-                ticketMetrics?.resolution_time ? new Date(ticketMetrics.resolution_time) : null
-              }
-              status={ticket.status}
-            />
+            <span>
+              Created: {new Date(ticket.created_at || "").toLocaleDateString()}
+            </span>
           </div>
         </div>
         <div className="flex gap-2">
-          {ticket.status === 'open' ? (
+          {ticket.ticket_status === "open" ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline">Close Ticket</Button>
@@ -384,17 +398,19 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Close this ticket?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will mark the ticket as resolved. You can still view the ticket history and
-                    reopen it if needed.
+                    Are you sure you want to close this ticket? You won&apos;t
+                    be able to reopen it later.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleCloseTicket}>Close Ticket</AlertDialogAction>
+                  <AlertDialogAction onClick={handleCloseTicket}>
+                    Close Ticket
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          ) : ticket.status === 'closed' ? (
+          ) : ticket.ticket_status === "closed" ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline">Reopen Ticket</Button>
@@ -403,18 +419,23 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Reopen this ticket?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will reopen the ticket for further discussion. You'll be able to add new
-                    messages.
+                    This will reopen the ticket for further discussion.
+                    You&apos;ll be able to add new messages.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleReopenTicket}>Reopen Ticket</AlertDialogAction>
+                  <AlertDialogAction onClick={handleReopenTicket}>
+                    Reopen Ticket
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
           ) : null}
-          <Button variant="outline" onClick={() => router.push('/agent/tickets')}>
+          <Button
+            variant="outline"
+            onClick={() => router.push("/agent/tickets")}
+          >
             Back to tickets
           </Button>
         </div>
@@ -422,7 +443,9 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
 
       <Card className="p-6">
         <h2 className="mb-2 font-semibold">Description</h2>
-        <p className="whitespace-pre-wrap text-muted-foreground">{ticket.description}</p>
+        <p className="whitespace-pre-wrap text-muted-foreground">
+          {ticket.ticket_description}
+        </p>
       </Card>
 
       {files.length > 0 && (
@@ -431,7 +454,7 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
           <div className="space-y-2">
             {files.map((file) => (
               <div
-                key={file.id}
+                key={file.file_id}
                 className="flex items-center justify-between rounded-md border bg-background p-2"
               >
                 <span className="text-sm">{file.file_name}</span>
@@ -440,7 +463,7 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
                   size="sm"
                   onClick={async () => {
                     const url = await getFileUrl(file.storage_path);
-                    window.open(url, '_blank');
+                    window.open(url, "_blank");
                   }}
                 >
                   Download
@@ -456,35 +479,59 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
         <div className="space-y-4">
           {messages.map((message) => (
             <Card
-              key={message.id}
-              className={`p-4 ${message.role === 'customer' ? 'ml-12' : 'mr-12'} ${message.is_internal ? 'border-yellow-500' : ''}`}
+              key={message.message_id}
+              className={`p-4 ${
+                message.sender_user_id === "customer" ? "ml-12" : "mr-12"
+              } ${message.is_internal_note ? "border-yellow-500" : ""}`}
             >
               <div className="mb-2 flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <Badge variant={message.role === 'customer' ? 'default' : 'secondary'}>
-                    {message.role}
+                  <Badge
+                    variant={
+                      message.sender_user_id === "customer"
+                        ? "default"
+                        : "secondary"
+                    }
+                  >
+                    {message.sender_user_id === "customer"
+                      ? "Customer"
+                      : "Agent"}
                   </Badge>
-                  {message.is_internal && <Badge variant="secondary">Internal Note</Badge>}
+                  {message.is_internal_note && (
+                    <Badge variant="secondary">Internal Note</Badge>
+                  )}
                 </div>
                 <span className="text-sm text-muted-foreground">
-                  {new Date(message.created_at).toLocaleString()}
+                  {new Date(message.created_at || "").toLocaleString()}
                 </span>
               </div>
-              <p className="whitespace-pre-wrap">{message.message_body}</p>
+              <p className="whitespace-pre-wrap">{message.message_content}</p>
             </Card>
           ))}
         </div>
 
-        {ticket.status !== 'closed' && (
+        {ticket.ticket_status !== "closed" && (
           <div className="space-y-4">
-            <FileUpload ticketId={params.id} onUploadComplete={setNewFileIds} />
+            <FileUpload
+              maxFiles={5}
+              allowedTypes={["*/*"]}
+              onUploadComplete={setNewFileIds}
+            />
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
-                <Switch id="internal-note" checked={isInternal} onCheckedChange={setIsInternal} />
+                <Switch
+                  id="internal-note"
+                  checked={isInternal}
+                  onCheckedChange={setIsInternal}
+                />
                 <Label htmlFor="internal-note">Internal Note</Label>
               </div>
               <Textarea
-                placeholder={isInternal ? 'Add an internal note...' : 'Type your message...'}
+                placeholder={
+                  isInternal
+                    ? "Add an internal note..."
+                    : "Type your message..."
+                }
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 className="min-h-[100px]"
@@ -492,9 +539,15 @@ export default function AgentTicketDetailPage({ params }: PageProps) {
               <div className="flex justify-end">
                 <Button
                   onClick={handleSendMessage}
-                  disabled={sending || (!newMessage.trim() && newFileIds.length === 0)}
+                  disabled={
+                    sending || (!newMessage.trim() && newFileIds.length === 0)
+                  }
                 >
-                  {sending ? 'Sending...' : isInternal ? 'Add Note' : 'Send Message'}
+                  {sending
+                    ? "Sending..."
+                    : isInternal
+                    ? "Add Note"
+                    : "Send Message"}
                 </Button>
               </div>
             </div>

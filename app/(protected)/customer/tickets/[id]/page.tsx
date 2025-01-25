@@ -1,21 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/utils/supabase/client";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { useRouter } from "next/navigation";
-import { notifications } from "@/utils/notifications";
+import { useCallback, useEffect, useState } from "react";
+
 import { FileUpload } from "@/components/file-upload";
-import { TicketFeedback } from "@/components/ticket-feedback";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,100 +15,57 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { SLAStatus } from "@/components/tickets/sla-status";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-type Ticket = {
-  id: string;
-  subject: string;
-  description: string;
-  status: "open" | "pending" | "closed";
-  priority: "low" | "normal" | "high";
-  created_at: string;
-  updated_at: string;
-  creator_id: string;
-  organization_id: string;
-  first_response_breach_at: string | null;
-  resolution_breach_at: string | null;
+type Ticket = Database["public"]["Tables"]["support_tickets"]["Row"];
+type Message = Database["public"]["Tables"]["ticket_messages"]["Row"];
+type FileAttachment = Pick<
+  Database["public"]["Tables"]["uploaded_files"]["Row"],
+  "file_id" | "file_name" | "file_type" | "storage_path"
+>;
+type FileJoinResult = {
+  file: FileAttachment;
 };
 
-type Message = {
-  id: string;
-  ticket_id: string;
-  message_body: string;
-  role: "customer" | "agent" | "admin";
-  created_at: string;
-  read_by_customer: boolean;
-  read_by_agent: boolean;
-};
-
-type AttachmentFile = {
-  id: string;
-  file_name: string;
-  content_type: string;
-  storage_path: string;
-};
-
-type TicketDetailClientProps = {
+interface TicketDetailClientProps {
   ticketId: string;
-};
+}
 
 function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [files, setFiles] = useState<AttachmentFile[]>([]);
+  const [files, setFiles] = useState<FileAttachment[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [newFileIds, setNewFileIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [ticketMetrics, setTicketMetrics] = useState<{
-    first_response_time: string | null;
-    resolution_time: string | null;
-  } | null>(null);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    fetchTicketAndMessages();
-    markMessagesAsRead();
-
-    const channel = supabase
-      .channel("ticket-detail")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "ticket_messages",
-          filter: "ticket_id=eq." + ticketId,
-        },
-        (payload) => {
-          const newMessage = payload.new as Message;
-          setMessages((prev) => [...prev, newMessage]);
-          if (newMessage.role !== "customer") {
-            markMessageAsRead(newMessage.id);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [ticketId]);
-
-  const fetchTicketAndMessages = async () => {
+  const fetchTicketAndMessages = useCallback(async () => {
     try {
       // Fetch ticket details
       const { data: ticketData, error: ticketError } = await supabase
-        .from("tickets")
-        .select("*, ticket_metrics(*)")
-        .eq("id", ticketId)
+        .from("support_tickets")
+        .select("*")
+        .eq("ticket_id", ticketId)
         .single();
 
       if (ticketError) throw ticketError;
       setTicket(ticketData);
-      setTicketMetrics(ticketData.ticket_metrics);
 
       // Fetch messages
       const { data: messagesData, error: messagesError } = await supabase
@@ -134,60 +79,93 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
 
       // Fetch files
       const { data: filesData, error: filesError } = await supabase
-        .from("ticket_files")
+        .from("ticket_file_attachments")
         .select(
           `
-                    file:files (
-                        id,
-                        file_name,
-                        content_type,
-                        storage_path
-                    )
-                `
+          file:uploaded_files (
+            file_id,
+            file_name,
+            file_type,
+            storage_path
+          )
+        `
         )
         .eq("ticket_id", ticketId);
 
       if (filesError) throw filesError;
-      setFiles(filesData.map((f: any) => f.file));
-
-      // Check if we should show feedback
-      const { data: feedbackData } = await supabase
-        .from("ticket_feedback")
-        .select("id")
-        .eq("ticket_id", ticketId)
-        .single();
-
-      setShowFeedback(ticketData.status === "closed" && !feedbackData);
+      setFiles(filesData.map((f: FileJoinResult) => f.file));
     } catch (error) {
-      notifications.error("Failed to load ticket details");
+      toast({
+        title: "Error",
+        description: "Failed to load ticket details",
+        variant: "destructive",
+      });
       console.error("Error:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, ticketId, toast]);
 
-  const markMessagesAsRead = async () => {
+  const markMessagesAsRead = useCallback(async () => {
     try {
       await supabase
         .from("ticket_messages")
-        .update({ read_by_customer: true })
+        .update({ customer_has_read: true })
         .eq("ticket_id", ticketId)
-        .neq("role", "customer");
+        .neq("sender_user_id", "customer");
     } catch (error) {
       console.error("Error marking messages as read:", error);
     }
-  };
+  }, [supabase, ticketId]);
 
-  const markMessageAsRead = async (messageId: string) => {
-    try {
-      await supabase
-        .from("ticket_messages")
-        .update({ read_by_customer: true })
-        .eq("id", messageId);
-    } catch (error) {
-      console.error("Error marking message as read:", error);
-    }
-  };
+  const markMessageAsRead = useCallback(
+    async (messageId: string) => {
+      try {
+        await supabase
+          .from("ticket_messages")
+          .update({ customer_has_read: true })
+          .eq("message_id", messageId);
+      } catch (error) {
+        console.error("Error marking message as read:", error);
+      }
+    },
+    [supabase]
+  );
+
+  useEffect(() => {
+    fetchTicketAndMessages();
+    markMessagesAsRead();
+
+    const channel = supabase
+      .channel(`ticket-${ticketId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ticket_messages",
+          filter: `ticket_id=eq.${ticketId}`,
+        },
+        (payload) => {
+          const newMessage = payload.new as Message;
+          setMessages((prev) => [...prev, newMessage]);
+          if (newMessage.sender_user_id !== "customer") {
+            markMessageAsRead(newMessage.message_id);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [
+    fetchTicketAndMessages,
+    markMessagesAsRead,
+    markMessageAsRead,
+    supabase,
+    ticketId,
+  ]);
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() && newFileIds.length === 0) return;
@@ -200,8 +178,8 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
           .from("ticket_messages")
           .insert({
             ticket_id: ticketId,
-            message_body: newMessage,
-            role: "customer",
+            message_content: newMessage,
+            sender_user_id: "customer",
           });
 
         if (messageError) throw messageError;
@@ -210,7 +188,7 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
       // Link files if any
       if (newFileIds.length > 0) {
         const { error: filesError } = await supabase
-          .from("ticket_files")
+          .from("ticket_file_attachments")
           .insert(
             newFileIds.map((fileId) => ({
               ticket_id: ticketId,
@@ -224,7 +202,11 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
       setNewMessage("");
       setNewFileIds([]);
     } catch (error) {
-      notifications.error("Failed to send message");
+      toast({
+        title: "Error",
+        description: "Failed to send message",
+        variant: "destructive",
+      });
       console.error("Error:", error);
     } finally {
       setSending(false);
@@ -234,16 +216,24 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
   const handleCloseTicket = async () => {
     try {
       const { error } = await supabase
-        .from("tickets")
-        .update({ status: "closed" })
-        .eq("id", ticketId);
+        .from("support_tickets")
+        .update({ ticket_status: "closed" })
+        .eq("ticket_id", ticketId);
 
       if (error) throw error;
 
-      setTicket((prev) => (prev ? { ...prev, status: "closed" } : null));
-      notifications.success("Ticket closed successfully");
+      setTicket((prev) => (prev ? { ...prev, ticket_status: "closed" } : null));
+      toast({
+        title: "Success",
+        description: "Ticket closed successfully",
+        variant: "default",
+      });
     } catch (error) {
-      notifications.error("Failed to close ticket");
+      toast({
+        title: "Error",
+        description: "Failed to close ticket",
+        variant: "destructive",
+      });
       console.error("Error:", error);
     }
   };
@@ -251,16 +241,24 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
   const handleReopenTicket = async () => {
     try {
       const { error } = await supabase
-        .from("tickets")
-        .update({ status: "open" })
-        .eq("id", ticketId);
+        .from("support_tickets")
+        .update({ ticket_status: "open" })
+        .eq("ticket_id", ticketId);
 
       if (error) throw error;
 
-      setTicket((prev) => (prev ? { ...prev, status: "open" } : null));
-      notifications.success("Ticket reopened successfully");
+      setTicket((prev) => (prev ? { ...prev, ticket_status: "open" } : null));
+      toast({
+        title: "Success",
+        description: "Ticket reopened successfully",
+        variant: "default",
+      });
     } catch (error) {
-      notifications.error("Failed to reopen ticket");
+      toast({
+        title: "Error",
+        description: "Failed to reopen ticket",
+        variant: "destructive",
+      });
       console.error("Error:", error);
     }
   };
@@ -287,7 +285,7 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
     switch (status) {
       case "open":
         return "bg-green-500";
-      case "pending":
+      case "waiting_on_customer":
         return "bg-yellow-500";
       case "closed":
         return "bg-gray-500";
@@ -299,7 +297,7 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -322,28 +320,31 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
+      <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            {ticket.subject}
+            {ticket.ticket_title}
           </h1>
-          <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
+          <div className="mt-2 flex gap-4 text-sm text-muted-foreground">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-2">
                     Priority:
                     <div
-                      className={`h-2 w-2 rounded-full ${getPriorityColor(ticket.priority)}`}
+                      className={`h-2 w-2 rounded-full ${getPriorityColor(
+                        ticket.ticket_priority
+                      )}`}
                     />
-                    {ticket.priority}
+                    {ticket.ticket_priority}
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {ticket.priority === "high" &&
+                  {ticket.ticket_priority === "high" &&
                     "Urgent issue requiring immediate attention"}
-                  {ticket.priority === "normal" && "Standard priority issue"}
-                  {ticket.priority === "low" &&
+                  {ticket.ticket_priority === "normal" &&
+                    "Standard priority issue"}
+                  {ticket.ticket_priority === "low" &&
                     "Non-urgent issue that can be addressed later"}
                 </TooltipContent>
               </Tooltip>
@@ -354,52 +355,30 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
                   <div className="flex items-center gap-2">
                     Status:
                     <div
-                      className={`h-2 w-2 rounded-full ${getStatusColor(ticket.status)}`}
+                      className={`h-2 w-2 rounded-full ${getStatusColor(
+                        ticket.ticket_status
+                      )}`}
                     />
-                    {ticket.status}
+                    {ticket.ticket_status}
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {ticket.status === "open" &&
+                  {ticket.ticket_status === "open" &&
                     "Ticket is active and awaiting response"}
-                  {ticket.status === "pending" &&
+                  {ticket.ticket_status === "waiting_on_customer" &&
                     "Ticket is awaiting your response"}
-                  {ticket.status === "closed" && "Ticket has been resolved"}
+                  {ticket.ticket_status === "closed" &&
+                    "Ticket has been resolved"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
             <span>
-              Created: {new Date(ticket.created_at).toLocaleDateString()}
+              Created: {new Date(ticket.created_at || "").toLocaleDateString()}
             </span>
-          </div>
-          <div className="mt-2">
-            <SLAStatus
-              firstResponseBreachAt={
-                ticket.first_response_breach_at
-                  ? new Date(ticket.first_response_breach_at)
-                  : null
-              }
-              resolutionBreachAt={
-                ticket.resolution_breach_at
-                  ? new Date(ticket.resolution_breach_at)
-                  : null
-              }
-              firstResponseTime={
-                ticketMetrics?.first_response_time
-                  ? new Date(ticketMetrics.first_response_time)
-                  : null
-              }
-              resolutionTime={
-                ticketMetrics?.resolution_time
-                  ? new Date(ticketMetrics.resolution_time)
-                  : null
-              }
-              status={ticket.status}
-            />
           </div>
         </div>
         <div className="flex gap-2">
-          {ticket.status === "open" ? (
+          {ticket.ticket_status === "open" ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline">Close Ticket</Button>
@@ -408,8 +387,8 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Close this ticket?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will mark the ticket as resolved. You can still view
-                    the ticket history and reopen it if needed.
+                    Are you sure you want to close this ticket? You won&apos;t
+                    be able to reopen it later.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -420,7 +399,7 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          ) : ticket.status === "closed" ? (
+          ) : ticket.ticket_status === "closed" ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline">Reopen Ticket</Button>
@@ -429,8 +408,8 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Reopen this ticket?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will reopen the ticket for further discussion. You'll
-                    be able to add new messages.
+                    This will reopen the ticket for further discussion.
+                    You&apos;ll be able to add new messages.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -452,20 +431,20 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
       </div>
 
       <Card className="p-6">
-        <h2 className="font-semibold mb-2">Description</h2>
-        <p className="text-muted-foreground whitespace-pre-wrap">
-          {ticket.description}
+        <h2 className="mb-2 font-semibold">Description</h2>
+        <p className="whitespace-pre-wrap text-muted-foreground">
+          {ticket.ticket_description}
         </p>
       </Card>
 
       {files.length > 0 && (
         <Card className="p-6">
-          <h2 className="font-semibold mb-4">Attachments</h2>
+          <h2 className="mb-4 font-semibold">Attachments</h2>
           <div className="space-y-2">
             {files.map((file) => (
               <div
-                key={file.id}
-                className="flex items-center justify-between p-2 rounded-md border bg-background"
+                key={file.file_id}
+                className="flex items-center justify-between rounded-md border bg-background p-2"
               >
                 <span className="text-sm">{file.file_name}</span>
                 <Button
@@ -489,29 +468,37 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
         <div className="space-y-4">
           {messages.map((message) => (
             <Card
-              key={message.id}
-              className={`p-4 ${message.role === "customer" ? "ml-12" : "mr-12"}`}
+              key={message.message_id}
+              className={`p-4 ${
+                message.sender_user_id === "customer" ? "ml-12" : "mr-12"
+              }`}
             >
-              <div className="flex justify-between items-start mb-2">
+              <div className="mb-2 flex items-start justify-between">
                 <Badge
                   variant={
-                    message.role === "customer" ? "default" : "secondary"
+                    message.sender_user_id === "customer"
+                      ? "default"
+                      : "secondary"
                   }
                 >
-                  {message.role}
+                  {message.sender_user_id === "customer" ? "Customer" : "Agent"}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  {new Date(message.created_at).toLocaleString()}
+                  {new Date(message.created_at || "").toLocaleString()}
                 </span>
               </div>
-              <p className="whitespace-pre-wrap">{message.message_body}</p>
+              <p className="whitespace-pre-wrap">{message.message_content}</p>
             </Card>
           ))}
         </div>
 
-        {ticket.status !== "closed" ? (
+        {ticket.ticket_status !== "closed" && (
           <div className="space-y-4">
-            <FileUpload ticketId={ticketId} onUploadComplete={setNewFileIds} />
+            <FileUpload
+              maxFiles={5}
+              allowedTypes={["*/*"]}
+              onUploadComplete={setNewFileIds}
+            />
             <div className="space-y-2">
               <Textarea
                 placeholder="Type your message..."
@@ -531,12 +518,7 @@ function TicketDetailClient({ ticketId }: TicketDetailClientProps) {
               </div>
             </div>
           </div>
-        ) : showFeedback ? (
-          <TicketFeedback
-            ticketId={ticketId}
-            onFeedbackSubmit={() => setShowFeedback(false)}
-          />
-        ) : null}
+        )}
       </div>
     </div>
   );

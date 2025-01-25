@@ -7,8 +7,8 @@ export default function CategoriesPage() {
   return (
     <div className="container space-y-6">
       <PageHeader
-        title="Ticket Categories & Tags"
-        description="Manage categories and tags for organizing tickets"
+        heading="Ticket Categories & Tags"
+        text="Manage categories and tags for organizing tickets"
       />
       <TicketCategories />
     </div>

@@ -1,237 +1,278 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from "react"
-import { createClient } from "@/utils/supabase/client"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { notifications } from "@/utils/notifications"
-import { FileUpload } from "@/components/file-upload"
-import {
-    Avatar,
-    AvatarFallback,
-    AvatarImage,
-} from "@/components/ui/avatar"
+import { useCallback, useEffect, useState } from "react";
 
-type Profile = {
-    id: string
-    full_name: string
-    email: string
-    organization_id: string | null
-    profile_picture_file_id: string | null
-    role: 'customer' | 'agent' | 'admin'
-}
+import { FileUpload } from "@/components/file-upload";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-type Organization = {
-    id: string
-    name: string
-    domain: string
-}
+type Organization = Database["public"]["Tables"]["organizations"]["Row"];
+type Profile = Database["public"]["Tables"]["user_profiles"]["Row"];
+type ProfileUpdates = Partial<Profile>;
 
 export default function ProfilePage() {
-    const supabase = createClient()
-    const [profile, setProfile] = useState<Profile | null>(null)
-    const [organization, setOrganization] = useState<Organization | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [editing, setEditing] = useState(false)
-    const [fullName, setFullName] = useState("")
-    const [saving, setSaving] = useState(false)
-    const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null)
-    const [newProfilePictureId, setNewProfilePictureId] = useState<string | null>(null)
+  const supabase = createBrowserSupabaseClient();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [newProfilePictureId, setNewProfilePictureId] = useState<string | null>(
+    null
+  );
+  const { toast } = useToast();
 
-    useEffect(() => {
-        fetchProfile()
-    }, [])
+  const fetchProfile = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const fetchProfile = async () => {
-        try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
+      const { data: profileData, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
 
-            // Get profile data
-            const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', user.id)
-                .single()
+      if (profileError) throw profileError;
 
-            if (profileError) throw profileError
+      if (profileData) {
+        setProfile(profileData);
+        setFullName(profileData.display_name || "");
 
-            // Get organization data if any
-            if (profileData.organization_id) {
-                const { data: orgData, error: orgError } = await supabase
-                    .from('organizations')
-                    .select('*')
-                    .eq('id', profileData.organization_id)
-                    .single()
+        if (profileData.organization_id) {
+          const { data: orgData, error: orgError } = await supabase
+            .from("organizations")
+            .select("*")
+            .eq("organization_id", profileData.organization_id)
+            .single();
 
-                if (orgError) throw orgError
-                setOrganization(orgData)
-            }
-
-            // Get profile picture URL if any
-            if (profileData.profile_picture_file_id) {
-                const { data: fileData } = await supabase
-                    .from('files')
-                    .select('storage_path')
-                    .eq('id', profileData.profile_picture_file_id)
-                    .single()
-
-                if (fileData) {
-                    const { data } = supabase.storage
-                        .from('attachments')
-                        .getPublicUrl(fileData.storage_path)
-                    setProfilePictureUrl(data.publicUrl)
-                }
-            }
-
-            setProfile({ ...profileData, email: user.email })
-            setFullName(profileData.full_name)
-        } catch (error) {
-            console.error('Error:', error)
-            notifications.error('Failed to load profile')
-        } finally {
-            setLoading(false)
+          if (orgError) throw orgError;
+          setOrganization(orgData);
         }
-    }
 
-    const handleSave = async () => {
-        if (!profile) return
+        if (profileData.avatar_file_id) {
+          const { data: fileData, error: fileError } = await supabase
+            .from("uploaded_files")
+            .select("storage_path")
+            .eq("file_id", profileData.avatar_file_id)
+            .single();
 
-        setSaving(true)
-        try {
-            const updates: any = {
-                full_name: fullName.trim()
+          if (fileError) throw fileError;
+
+          const storagePath = fileData?.storage_path;
+          if (storagePath && typeof storagePath === "string") {
+            try {
+              const { data } = await supabase.storage
+                .from("public")
+                .createSignedUrl(storagePath, 3600);
+
+              if (data) {
+                setAvatarUrl(data.signedUrl);
+              }
+            } catch (error) {
+              console.error("Error creating signed URL:", error);
             }
-
-            if (newProfilePictureId) {
-                updates.profile_picture_file_id = newProfilePictureId
-            }
-
-            const { error } = await supabase
-                .from('profiles')
-                .update(updates)
-                .eq('id', profile.id)
-
-            if (error) throw error
-
-            setProfile(prev => prev ? { ...prev, ...updates } : null)
-            setEditing(false)
-            notifications.success('Profile updated successfully')
-
-            // Refresh profile data to get new picture URL
-            fetchProfile()
-        } catch (error) {
-            console.error('Error:', error)
-            notifications.error('Failed to update profile')
-        } finally {
-            setSaving(false)
+          }
         }
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load profile",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
+  }, [supabase, toast]);
 
-    if (loading) {
-        return (
-            <div className="flex h-full items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            </div>
-        )
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const updates: ProfileUpdates = {
+        display_name: fullName.trim(),
+      };
+
+      const { error } = await supabase
+        .from("user_profiles")
+        .update(updates)
+        .eq("user_id", profile?.user_id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Profile updated successfully",
+      });
+      await fetchProfile();
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update profile",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
     }
+  };
 
-    if (!profile) {
-        return (
-            <div className="flex h-full items-center justify-center">
-                <div className="text-center">
-                    <h2 className="text-2xl font-bold">Profile not found</h2>
-                    <p className="text-muted-foreground">Please try refreshing the page</p>
-                </div>
-            </div>
-        )
+  const handleAvatarUpload = async (fileIds: string[]) => {
+    if (!fileIds.length || !profile) return;
+
+    try {
+      const updates: ProfileUpdates = {
+        avatar_file_id: fileIds[0],
+      };
+
+      const { error } = await supabase
+        .from("user_profiles")
+        .update(updates)
+        .eq("user_id", profile.user_id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Avatar updated successfully",
+      });
+      await fetchProfile();
+    } catch (error) {
+      console.error("Error updating avatar:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update avatar",
+        variant: "destructive",
+      });
     }
+  };
 
+  if (loading) {
     return (
-        <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
-                <p className="text-muted-foreground">
-                    Manage your account settings
-                </p>
-            </div>
+      <div className="flex h-full items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
-            <Card className="p-6">
-                <div className="space-y-6">
-                    <div className="flex items-center gap-6">
-                        <Avatar className="h-20 w-20">
-                            <AvatarImage src={profilePictureUrl || undefined} />
-                            <AvatarFallback>
-                                {profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                            </AvatarFallback>
-                        </Avatar>
-                        {editing && (
-                            <FileUpload
-                                maxFiles={1}
-                                allowedTypes={['image/*']}
-                                onUploadComplete={(fileIds) => {
-                                    if (fileIds.length > 0) {
-                                        setNewProfilePictureId(fileIds[0])
-                                    }
-                                }}
-                            />
-                        )}
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Full Name</label>
-                        {editing ? (
-                            <Input
-                                value={fullName}
-                                onChange={(e) => setFullName(e.target.value)}
-                                placeholder="Your full name"
-                            />
-                        ) : (
-                            <p className="text-muted-foreground">{profile.full_name}</p>
-                        )}
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Email</label>
-                        <p className="text-muted-foreground">{profile.email}</p>
-                    </div>
-
-                    {organization && (
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Organization</label>
-                            <p className="text-muted-foreground">{organization.name}</p>
-                        </div>
-                    )}
-
-                    <div className="flex justify-end gap-4">
-                        {editing ? (
-                            <>
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        setEditing(false)
-                                        setFullName(profile.full_name)
-                                        setNewProfilePictureId(null)
-                                    }}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    onClick={handleSave}
-                                    disabled={saving || !fullName.trim() || fullName === profile.full_name}
-                                >
-                                    {saving ? "Saving..." : "Save Changes"}
-                                </Button>
-                            </>
-                        ) : (
-                            <Button onClick={() => setEditing(true)}>
-                                Edit Profile
-                            </Button>
-                        )}
-                    </div>
-                </div>
-            </Card>
+  if (!profile) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold">Profile not found</h2>
+          <p className="text-muted-foreground">
+            Please try refreshing the page
+          </p>
         </div>
-    )
-} 
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
+        <p className="text-muted-foreground">Manage your account settings</p>
+      </div>
+
+      <Card className="p-6">
+        <div className="space-y-6">
+          <div className="flex items-center gap-6">
+            <Avatar className="h-20 w-20">
+              <AvatarImage src={avatarUrl || undefined} />
+              <AvatarFallback>
+                {profile.display_name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            {editing && (
+              <FileUpload
+                maxFiles={1}
+                allowedTypes={["image/*"]}
+                onUploadComplete={(fileIds) => {
+                  if (fileIds.length > 0) {
+                    setNewProfilePictureId(fileIds[0]);
+                  }
+                }}
+              />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Full Name</label>
+            {editing ? (
+              <Input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Your full name"
+              />
+            ) : (
+              <p className="text-muted-foreground">{profile.display_name}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium">Email</p>
+            <p className="text-muted-foreground">{profile.user_id}</p>
+          </div>
+
+          {organization && (
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium">Organization</p>
+              <p className="text-muted-foreground">
+                {organization.organization_name}
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-4">
+            {editing ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditing(false);
+                    setFullName(profile.display_name || "");
+                    setNewProfilePictureId(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={
+                    saving ||
+                    !fullName.trim() ||
+                    fullName === profile.display_name
+                  }
+                >
+                  {saving ? "Saving..." : "Save Changes"}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setEditing(true)}>Edit Profile</Button>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}

@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+
 import { ArticleDetail } from '@/components/article/article-detail';
 
 interface Params {

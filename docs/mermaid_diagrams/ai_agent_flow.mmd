@@ -1,0 +1,231 @@
+%% Main Entry Points
+graph TD
+    NewTicket[New Support Ticket] --> InitCheck
+    NewDoc[New Knowledge Document] --> DocProcess
+    NewChat[New Chat Session] --> ChatStart
+
+%% Pre-Processing Subgraph
+subgraph PreProcess["Pre-Processing"]
+    InitCheck[Initial Processing] --> SplitContent[Split Content & Attachments]
+    
+    %% Content Processing Branch
+    SplitContent --> Moderate[Content Moderation]
+    Moderate --> ModCheck{Content Safe?}
+    ModCheck -->|Yes| TokenCheck[Check Token Count]
+    ModCheck -->|No| AdminReview[Send to Admin Review]
+    AdminReview --> AdminDecision{Admin Decision}
+    AdminDecision -->|Approve| TokenCheck
+    AdminDecision -->|Reject| RejectTicket[Reject & Notify]
+    TokenCheck --> ChunkerEntry[Enter Chunker Flow]
+    
+    %% File Processing Branch
+    SplitContent --> FileCheck{Has Attachments?}
+    FileCheck -->|No| SkipFiles[Skip File Processing]
+    FileCheck -->|Yes| FileType{File Type?}
+    
+    %% Image Processing
+    FileType -->|Image| GPTVision[Process with GPT-4 Vision]
+    GPTVision --> AnalyzeImage[Analyze Image with Ticket Context]
+    AnalyzeImage --> ExtractImageContext[Extract Relevant Details]
+    GPTVision -->|Error| ImgError[Log Image Error]
+    ImgError --> NotifyAdmin[Notify Admin]
+    ImgError --> SkipFile[Skip Problem File]
+    
+    %% Document Processing
+    FileType -->|Document| DocType{Document Type}
+    DocType -->|PDF/Word/Text| Unstructured[Process with Unstructured]
+    DocType -->|CSV/Excel| TableParser[Parse Structured Data]
+    
+    %% Document Error Handling
+    Unstructured -->|Error| DocError[Log Document Error]
+    DocError --> RetryDoc[Retry Processing]
+    RetryDoc -->|Success| Continue[Continue Processing]
+    RetryDoc -->|Fail| FallbackText[Extract Raw Text]
+    FallbackText -->|Success| Continue
+    FallbackText -->|Fail| NotifyAdmin
+    
+    %% Table Error Handling
+    TableParser -->|Error| TableError[Log Table Error]
+    TableError --> RetryTable[Retry with Different Parser]
+    RetryTable -->|Success| Continue
+    RetryTable -->|Fail| NotifyAdmin
+    
+    %% Content Token Management
+    Continue --> TokenCount[Count Tokens]
+    TokenCount --> TokenCheck{Tokens > Max?}
+    TokenCheck -->|Yes| ChunkContent[Create Content Chunks]
+    TokenCheck -->|No| ProcessWhole[Process As Is]
+    
+    ChunkContent --> StoreChunks[Store Content Chunks]
+    StoreChunks --> CreateEmbeddings[Create Chunk Embeddings]
+    CreateEmbeddings --> LinkToTicket[Link Chunks to Ticket]
+    
+    ProcessWhole --> ExtractRelevant[Extract Relevant Info]
+    ExtractRelevant --> StoreContext[Store Context]
+    
+    %% Combine Results
+    ExtractImageContext --> MergeResults[Merge All Context]
+    StoreContext --> MergeResults
+    LinkToTicket --> MergeResults
+    SkipFiles --> MergeResults
+    SkipFile --> MergeResults
+    
+    %% Final Processing
+    MergeResults --> TokenCheck
+end
+
+%% Chunker/Summarizer Subgraph
+subgraph Chunker["Chunker/Summarizer Agent"]
+    ChunkerEntry --> Count[Count Tokens]
+    Count --> Check{Token Count <= Max?}
+    
+    %% Under Token Limit
+    Check -->|Yes| Store[Store Original Text]
+    Store --> ReturnText[Return Text]
+    
+    %% Over Token Limit
+    Check -->|No| Split[Split into Chunks]
+    Split --> ChunkLoop[Process Each Chunk]
+    ChunkLoop --> RecCheck{Chunk > Max Tokens?}
+    RecCheck -->|Yes| RecSplit[Split Chunk Further]
+    RecSplit --> ChunkLoop
+    
+    %% Summarization
+    RecCheck -->|No| Sum[Summarize Chunk]
+    Sum --> SumCheck{Summary > Max Tokens?}
+    SumCheck -->|Yes| Retry[Retry with Stricter Params]
+    Retry --> Sum
+    SumCheck -->|No| Collect[Collect Summaries]
+    Collect --> FinalSum[Create Final Summary]
+    
+    %% Metadata
+    ChunkerEntry --> Meta[Create Metadata]
+    Meta --> TrackOrig[Track Original Text]
+    TrackOrig --> TrackChunks[Track Chunk Map]
+end
+
+%% Router Agent Subgraph
+subgraph Router["Router Agent"]
+    ReturnText --> InitRoute[Initialize Routing]
+    
+    subgraph "Context Gathering"
+        InitRoute --> GetOrg[Get Organization Info]
+        InitRoute --> GetTeams[Get Team List]
+        InitRoute --> GetCats[Get Categories]
+        InitRoute --> GetTags[Get Tags]
+        InitRoute --> GetHist[Get Historical Tickets]
+        InitRoute --> GetSLA[Get SLA Requirements]
+        
+        GetOrg & GetTeams & GetCats & GetTags & GetHist & GetSLA --> PrepContext[Prepare Context]
+    end
+    
+    PrepContext --> AnalyzeContext[Analyze Context]
+    AnalyzeContext --> DetectIntent[Detect Intent]
+    DetectIntent --> SetPriority[Set Priority]
+    SetPriority --> SelectTeam[Select Team]
+    SelectTeam --> HasTeam{Team Available?}
+    HasTeam -->|Yes| Assign[Assign to Team]
+    HasTeam -->|No| Escalate[Escalate to Admin]
+end
+
+%% Support Agent Subgraph
+subgraph Support["Support Agent"]
+    Assign --> ChatStart[Begin Chat]
+    ChatStart --> LoadContext[Load Context]
+    LoadContext --> GetKB[Get Relevant KB Articles]
+    GetKB --> GenResp[Generate Response]
+    GenResp --> QCheck{Quality Check}
+    QCheck -->|Pass| Send[Send Response]
+    QCheck -->|Fail| Review[Human Review]
+    Review --> HumanKB[Load KB for Human]
+    HumanKB --> HumanAssist[AI Assist Human]
+    HumanAssist --> Send
+    Send --> Monitor[Monitor Response]
+    Monitor --> Resolved{Issue Resolved?}
+    Resolved -->|Yes| Close[Close Ticket]
+    Resolved -->|No| NextStep[Determine Next Step]
+    NextStep --> LoadContext
+end
+
+%% Knowledge Management Subgraph
+subgraph Knowledge["Knowledge Management"]
+    DocProcess[Process Document] --> Parse[Parse Document]
+    Parse --> Extract[Extract Content]
+    Extract --> Clean[Clean Content]
+    Clean --> Structure[Structure Content]
+    Structure --> ChunkerEntry
+    ReturnText --> Embed[Generate Embeddings]
+    Embed --> StoreVDB[Store in Vector DB]
+    StoreVDB --> IndexKB[Update Search Index]
+end
+
+%% Post-Resolution Subgraph
+subgraph PostRes["Post-Resolution Processing"]
+    Close --> Summary[Create Resolution Summary]
+    Summary --> LearnKB[Update Knowledge Base]
+    LearnKB --> Analytics[Update Analytics]
+    
+    %% Feedback Determination
+    Analytics --> CheckCriteria{Check Feedback Criteria}
+    CheckCriteria --> CheckComplexity{Complex Solution?}
+    CheckCriteria --> CheckNovel{Novel Solution?}
+    CheckCriteria --> CheckTime{Resolution Time > SLA?}
+    CheckCriteria --> CheckEscalation{Required Escalation?}
+    
+    CheckComplexity & CheckNovel & CheckTime & CheckEscalation --> EvalFeedback[Evaluate Feedback Need]
+    EvalFeedback --> FeedbackCheck{Need Feedback?}
+    FeedbackCheck -->|Yes| CollectFB[Collect Feedback]
+    FeedbackCheck -->|No| Archive[Archive Ticket]
+    
+    %% Feedback Collection
+    CollectFB --> AutoFB[Automated Survey]
+    CollectFB --> AgentFB[Agent Feedback]
+    AutoFB & AgentFB --> ProcessFB[Process Feedback]
+    ProcessFB --> UpdateModel[Update Learning Model]
+    UpdateModel --> Archive
+end
+
+%% Database Operations Subgraph
+subgraph DB["Database Operations"]
+    direction LR
+    DBUpdate[Update Status] --> DBEmbed[Store Embeddings]
+    DBEmbed --> DBLog[Create Audit Log]
+    DBLog --> DBNotify[Send Notifications]
+end
+
+%% Error Handling Subgraph
+subgraph Errors["Error Handling"]
+    direction LR
+    ErrCheck[Check Errors] --> ErrLog[Log Error]
+    ErrLog --> ErrNotify[Notify Admin]
+    ErrNotify --> ErrFallback[Use Fallback]
+end
+
+%% Cross-Subgraph Connections
+PreProcess --> Router
+Router --> Support
+Support --> PostRes
+Knowledge --> Router
+    
+%% Error Connections
+Chunker -->|Error| Errors
+Router -->|Error| Errors
+Support -->|Error| Errors
+Knowledge -->|Error| Errors
+PostRes -->|Error| Errors
+
+%% Database Update Connections
+Chunker --> DB
+Router --> DB
+Support --> DB
+Knowledge --> DB
+PostRes --> DB
+
+%% Styling
+classDef process fill:#f9f,stroke:#333,stroke-width:2px;
+classDef decision fill:#fff,stroke:#333,stroke-width:2px;
+classDef storage fill:#f96,stroke:#333,stroke-width:2px;
+    
+class NewTicket,NewDoc,NewChat process;
+class ModCheck,Check,HasTeam,QCheck,Resolved,FeedbackCheck decision;
+class DB,Knowledge storage;

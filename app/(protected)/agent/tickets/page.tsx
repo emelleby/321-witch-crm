@@ -1,134 +1,128 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/utils/supabase/client";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { notifications } from "@/utils/notifications";
+import { useCallback, useEffect, useState } from "react";
+
 import { AdvancedSearch } from "@/components/tickets/advanced-search";
+import { Card } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-type Ticket = {
-  id: string;
-  subject: string;
-  status: "open" | "pending" | "closed";
-  priority: "low" | "normal" | "high";
-  created_at: string;
-  updated_at: string;
-  unread_messages: number;
-  organization_id: string | null;
-  assigned_to: string | null;
-};
+type Ticket = Database["public"]["Tables"]["support_tickets"]["Row"];
+type Organization = Database["public"]["Tables"]["organizations"]["Row"];
 
-type Organization = {
-  id: string;
-  name: string;
-};
+interface SearchFilters {
+  status?: Database["public"]["Tables"]["support_tickets"]["Row"]["ticket_status"];
+  priority?: Database["public"]["Tables"]["support_tickets"]["Row"]["ticket_priority"];
+  organizationId?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+}
 
 export default function AgentTicketsPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    fetchOrganizations();
-
-    // Subscribe to real-time updates
-    const channel = supabase
-      .channel("tickets-updates")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tickets",
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            setTickets((prev) => [payload.new as Ticket, ...prev]);
-          } else if (payload.eventType === "UPDATE") {
-            setTickets((prev) =>
-              prev.map((ticket) =>
-                ticket.id === payload.new.id ? (payload.new as Ticket) : ticket
-              )
-            );
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const fetchOrganizations = async () => {
+  const fetchOrganizations = useCallback(async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.organization_id) return;
-
       const { data, error } = await supabase
         .from("organizations")
-        .select("id, name")
-        .eq("id", profile.organization_id)
-        .single();
+        .select("*")
+        .order("organization_name");
 
       if (error) throw error;
-      setOrganizations([data]);
+      setOrganizations(data);
     } catch (error) {
       console.error("Error fetching organizations:", error);
     }
-  };
+  }, [supabase]);
 
-  const handleSearch = async (filters: any) => {
+  const fetchTickets = useCallback(async () => {
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("support_tickets")
+        .select("*")
+        .eq("assigned_to_user_id", user.id)
+        .order("created_at", { ascending: false });
 
-      if (!profile) return;
+      if (error) throw error;
+      setTickets(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load tickets",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, toast]);
+
+  const handleSearch = async (filters: SearchFilters) => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
       setLoading(true);
 
-      const { data, error } = await supabase.rpc("search_tickets", {
-        search_query: filters.query || null,
-        status_filter: filters.status || null,
-        priority_filter: filters.priority || null,
-        category_ids:
-          filters.categoryIds.length > 0 ? filters.categoryIds : null,
-        tag_ids: filters.tagIds.length > 0 ? filters.tagIds : null,
-        date_from: filters.dateFrom,
-        date_to: filters.dateTo,
-        organization_id: profile.organization_id,
-        assigned_to: filters.assignedTo || null,
-        use_vector_search: filters.useVectorSearch,
-        similarity_threshold: 0.7,
+      // Build the query based on filters
+      let query = supabase
+        .from("support_tickets")
+        .select("*")
+        .eq("assigned_to_user_id", user.id);
+
+      if (filters.status) {
+        query = query.eq("ticket_status", filters.status);
+      }
+
+      if (filters.priority) {
+        query = query.eq("ticket_priority", filters.priority);
+      }
+
+      if (filters.organizationId) {
+        query = query.eq("organization_id", filters.organizationId);
+      }
+
+      if (filters.dateFrom) {
+        query = query.gte("created_at", filters.dateFrom);
+      }
+
+      if (filters.dateTo) {
+        query = query.lte("created_at", filters.dateTo);
+      }
+
+      const { data, error } = await query.order("created_at", {
+        ascending: false,
       });
 
       if (error) throw error;
       setTickets(data);
     } catch (error) {
-      notifications.error("Failed to load tickets");
+      toast({
+        title: "Error",
+        description: "Failed to load tickets",
+        variant: "destructive",
+      });
       console.error("Error:", error);
     } finally {
       setLoading(false);
@@ -161,6 +155,41 @@ export default function AgentTicketsPage() {
     }
   };
 
+  useEffect(() => {
+    fetchOrganizations();
+    fetchTickets();
+
+    // Subscribe to real-time updates
+    const channel = supabase
+      .channel("tickets-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "support_tickets",
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            setTickets((prev) => [payload.new as Ticket, ...prev]);
+          } else if (payload.eventType === "UPDATE") {
+            setTickets((prev) =>
+              prev.map((ticket) =>
+                ticket.ticket_id === payload.new.ticket_id
+                  ? (payload.new as Ticket)
+                  : ticket
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchOrganizations, fetchTickets, supabase]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -185,29 +214,24 @@ export default function AgentTicketsPage() {
         ) : (
           tickets.map((ticket) => (
             <Card
-              key={ticket.id}
+              key={ticket.ticket_id}
               className="p-6 cursor-pointer hover:bg-accent transition-colors"
-              onClick={() => router.push(`/agent/tickets/${ticket.id}`)}
+              onClick={() => router.push(`/agent/tickets/${ticket.ticket_id}`)}
             >
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">{ticket.subject}</h3>
-                    {ticket.unread_messages > 0 && (
-                      <Badge variant="destructive">
-                        {ticket.unread_messages} new
-                      </Badge>
-                    )}
+                    <h3 className="font-semibold">{ticket.ticket_title}</h3>
                   </div>
                   <div className="flex gap-2 text-sm text-muted-foreground">
                     <span>
                       Created:{" "}
-                      {new Date(ticket.created_at).toLocaleDateString()}
+                      {new Date(ticket.created_at || "").toLocaleDateString()}
                     </span>
                     <span>•</span>
                     <span>
                       Updated:{" "}
-                      {new Date(ticket.updated_at).toLocaleDateString()}
+                      {new Date(ticket.updated_at || "").toLocaleDateString()}
                     </span>
                     {ticket.organization_id && (
                       <>
@@ -216,8 +240,9 @@ export default function AgentTicketsPage() {
                           Organization:{" "}
                           {
                             organizations.find(
-                              (org) => org.id === ticket.organization_id
-                            )?.name
+                              (org) =>
+                                org.organization_id === ticket.organization_id
+                            )?.organization_name
                           }
                         </span>
                       </>
@@ -225,26 +250,50 @@ export default function AgentTicketsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`h-2 w-2 rounded-full ${getPriorityColor(
-                        ticket.priority
-                      )}`}
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {ticket.priority}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`h-2 w-2 rounded-full ${getStatusColor(
-                        ticket.status
-                      )}`}
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {ticket.status}
-                    </span>
-                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`h-2 w-2 rounded-full ${getPriorityColor(
+                              ticket.ticket_priority
+                            )}`}
+                          />
+                          {ticket.ticket_priority}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {ticket.ticket_priority === "high" &&
+                          "Urgent issue requiring immediate attention"}
+                        {ticket.ticket_priority === "normal" &&
+                          "Standard priority issue"}
+                        {ticket.ticket_priority === "low" &&
+                          "Non-urgent issue that can be addressed later"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`h-2 w-2 rounded-full ${getStatusColor(
+                              ticket.ticket_status
+                            )}`}
+                          />
+                          {ticket.ticket_status}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {ticket.ticket_status === "open" &&
+                          "Ticket is active and awaiting response"}
+                        {ticket.ticket_status === "waiting_on_customer" &&
+                          "Ticket is awaiting customer response"}
+                        {ticket.ticket_status === "closed" &&
+                          "Ticket has been resolved"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
             </Card>

@@ -1,38 +1,50 @@
 "use client";
 
-import WitchHouseLogo from "@/public/images/Shapes 14.png";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import WitchHouseLogo from "@/public/images/Shapes 14.png";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
 export default function VerifyEmailPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
   const [email, setEmail] = useState<string | null>(null);
   const isDevelopment = process.env.NODE_ENV === "development";
 
-  useEffect(() => {
-    // Get the user's email from the session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.email_confirmed_at) {
-        // If email is already verified, route to the appropriate dashboard
-        handleVerifiedUser();
+  const handleVerifiedUser = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        console.error("No user found");
+        return;
       }
-      setEmail(session?.user?.email ?? null);
-    });
-  }, []);
 
-  const handleVerifiedUser = async () => {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .single();
+      const { data: profile, error } = await supabase
+        .from("user_profiles")
+        .select("user_role")
+        .eq("user_id", user.id)
+        .single();
 
-    if (profile) {
-      switch (profile.role) {
+      if (error) {
+        console.error("Error fetching profile:", error);
+        return;
+      }
+
+      if (!profile) {
+        console.error("No profile found");
+        return;
+      }
+
+      console.log("Profile found:", profile);
+
+      switch (profile.user_role) {
         case "admin":
           router.push("/admin/dashboard");
           break;
@@ -45,8 +57,21 @@ export default function VerifyEmailPage() {
         default:
           router.push("/");
       }
+    } catch (error) {
+      console.error("Error in handleVerifiedUser:", error);
     }
-  };
+  }, [supabase, router]);
+
+  useEffect(() => {
+    // Get the user's email from the session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email_confirmed_at) {
+        // If email is already verified, route to the appropriate dashboard
+        handleVerifiedUser();
+      }
+      setEmail(session?.user?.email ?? null);
+    });
+  }, [supabase, handleVerifiedUser]);
 
   return (
     <div className="flex h-screen items-center justify-center bg-background">
@@ -73,7 +98,7 @@ export default function VerifyEmailPage() {
                     Check your email
                   </h1>
                   <p className="text-sm text-muted-foreground">
-                    We've sent a verification link to{" "}
+                    We&apos;ve sent a verification link to{" "}
                     {email ? (
                       <span className="font-medium">{email}</span>
                     ) : (
@@ -88,32 +113,32 @@ export default function VerifyEmailPage() {
               </div>
 
               {isDevelopment && (
-                <Alert>
+                <Alert data-testid="development-mode-alert">
                   <AlertTitle>Development Mode Instructions</AlertTitle>
                   <AlertDescription>
                     <p className="text-sm text-muted-foreground mb-2">
-                      Since you're running in development mode, you can:
+                      Since you&apos;re running in development mode, you can:
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
                       <li>
                         View emails at{" "}
-                        <a
+                        <Link
                           href="http://127.0.0.1:54324"
                           target="_blank"
                           className="underline"
                         >
                           http://127.0.0.1:54324
-                        </a>
+                        </Link>
                       </li>
                       <li>
                         Or verify email through Supabase Studio at{" "}
-                        <a
+                        <Link
                           href="http://127.0.0.1:54323"
                           target="_blank"
                           className="underline"
                         >
                           http://127.0.0.1:54323
-                        </a>{" "}
+                        </Link>{" "}
                         → Authentication → Users
                       </li>
                     </ul>
@@ -126,12 +151,14 @@ export default function VerifyEmailPage() {
                   variant="outline"
                   className="w-full"
                   onClick={() => router.push("/login")}
+                  data-testid="back-to-login-button"
                 >
                   Back to login
                 </Button>
                 <div className="text-center text-sm">
-                  Didn't receive the email?{" "}
+                  Didn&apos;t receive the email?{" "}
                   <button
+                    data-testid="resend-verification-email-button"
                     onClick={async () => {
                       if (email) {
                         await supabase.auth.resend({

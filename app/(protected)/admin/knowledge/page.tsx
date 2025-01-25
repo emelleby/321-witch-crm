@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { notifications } from '@/utils/notifications';
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -13,255 +13,167 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { FileUpload } from '@/components/file-upload';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { FileText, Pencil, Trash2, Eye } from 'lucide-react';
-import { RichTextEditor } from '@/components/editor/rich-text-editor';
+} from "@/components/ui/table";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-type Article = {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  tags: string[];
-  organization_id: string;
-  views_count: number;
-  created_at: string;
-  updated_at: string;
-  file_ids: string[];
-  fileUrls?: string[];
+type KnowledgeArticle =
+  Database["public"]["Tables"]["knowledge_articles"]["Row"] & {
+    created_by: {
+      display_name: string;
+    } | null;
+  };
+
+type KnowledgeFAQ = Database["public"]["Tables"]["knowledge_faqs"]["Row"] & {
+  created_by: {
+    display_name: string;
+  } | null;
 };
 
-const CATEGORIES = [
-  'Getting Started',
-  'Account & Billing',
-  'Features & Tools',
-  'Troubleshooting',
-  'API Documentation',
-  'Best Practices',
-  'FAQs',
-];
+type FileAttachment = Database["public"]["Tables"]["uploaded_files"]["Row"];
 
-
-export default function KnowledgeBasePage() {
-  const supabase = createClient();
-  const [articles, setArticles] = useState<Article[]>([]);
+export default function KnowledgePage() {
+  const router = useRouter();
+  const supabase = createBrowserSupabaseClient();
+  const [articles, setArticles] = useState<KnowledgeArticle[]>([]);
+  const [faqs, setFaqs] = useState<KnowledgeFAQ[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [showArticleDialog, setShowArticleDialog] = useState(false);
-  const [editingArticle, setEditingArticle] = useState<Article | null>(null);
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [category, setCategory] = useState<string>('');
-  const [tags, setTags] = useState<string>('');
-  const [fileIds, setFileIds] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const { toast } = useToast();
 
-  useEffect(() => {
-    fetchArticles();
-  }, []);
-
-  const fetchArticles = async () => {
+  const fetchKnowledgeBase = useCallback(async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Get user's organization
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.organization_id) return;
-
-      // Get all articles for the organization
-      const { data: articles, error } = await supabase
-        .from('knowledge_base')
-        .select('*')
-        .eq('organization_id', profile.organization_id)
-        .order('created_at', { ascending: false });
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("knowledge_articles")
+        .select(
+          `
+          *,
+          created_by:user_profiles!created_by_user_id(display_name)
+        `
+        )
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
-
-      // Get file URLs for each article
-      const articlesWithFiles = await Promise.all(
-        articles.map(async (article) => {
-          if (!article.file_ids?.length) return { ...article, fileUrls: [] };
-
-          const fileUrls = await Promise.all(
-            article.file_ids.map(async (fileId) => {
-              const { data: fileData } = await supabase
-                .from('files')
-                .select('storage_path')
-                .eq('id', fileId)
-                .single();
-
-              if (fileData) {
-                const { data } = supabase.storage
-                  .from('attachments')
-                  .getPublicUrl(fileData.storage_path);
-                return data.publicUrl;
-              }
-              return null;
-            })
-          );
-
-          return {
-            ...article,
-            fileUrls: fileUrls.filter(Boolean),
-          };
-        })
-      );
-
-      setArticles(articlesWithFiles);
+      setArticles(data || []);
     } catch (error) {
-      console.error('Error:', error);
-      notifications.error('Failed to load articles');
+      console.error("Error fetching knowledge base:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load knowledge base",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, toast]);
 
-  const handleSubmit = async () => {
-    if (!title.trim() || !content.trim() || !category) {
-      notifications.error('Please fill in all required fields');
-      return;
-    }
+  useEffect(() => {
+    fetchKnowledgeBase();
+  }, [fetchKnowledgeBase]);
 
-    setSubmitting(true);
-
+  const handleFileUpload = async (file: File, articleId: string) => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${articleId}/${Math.random()}.${fileExt}`;
 
-      // Get user's organization
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user.id)
+      const { error: uploadError } = await supabase.storage
+        .from("knowledge_files")
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: fileData, error: fileError } = await supabase
+        .from("uploaded_files")
+        .insert({
+          file_name: file.name,
+          file_size: file.size,
+          file_type: file.type,
+          storage_path: fileName,
+          uploaded_by_user_id: (await supabase.auth.getUser()).data.user?.id,
+        })
+        .select()
         .single();
 
-      if (!profile?.organization_id) throw new Error('No organization found');
+      if (fileError) throw fileError;
 
-      const articleData = {
-        title: title.trim(),
-        content: content.trim(),
-        category,
-        tags: tags
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean),
-        organization_id: profile.organization_id,
-        file_ids: fileIds,
-      };
+      // Create the relationship in the join table
+      const { error: joinError } = await supabase
+        .from("ticket_file_attachments")
+        .insert({
+          ticket_id: articleId,
+          file_id: fileData.file_id,
+        });
 
-      if (editingArticle) {
-        // Update article
-        const { error } = await supabase
-          .from('knowledge_base')
-          .update(articleData)
-          .eq('id', editingArticle.id);
+      if (joinError) throw joinError;
 
-        if (error) throw error;
+      toast({
+        title: "Success",
+        description: "File uploaded successfully",
+        variant: "default",
+      });
 
-        notifications.success('Article updated successfully');
-      } else {
-        // Create new article
-        const { error } = await supabase.from('knowledge_base').insert([articleData]);
-
-        if (error) throw error;
-
-        notifications.success('Article created successfully');
-      }
-
-      setShowArticleDialog(false);
-      setEditingArticle(null);
-      resetForm();
-      await fetchArticles();
+      await fetchKnowledgeBase();
     } catch (error) {
-      console.error('Error:', error);
-      notifications.error(editingArticle ? 'Failed to update article' : 'Failed to create article');
-    } finally {
-      setSubmitting(false);
+      toast({
+        title: "Error",
+        description: "Failed to upload file",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     }
   };
 
-  const handleEdit = (article: Article) => {
-    setEditingArticle(article);
-    setTitle(article.title);
-    setContent(article.content);
-    setCategory(article.category);
-    setTags(article.tags?.join(', ') || '');
-    setFileIds(article.file_ids || []);
-    setShowArticleDialog(true);
-  };
-
-  const handleDelete = async (articleId: string) => {
+  const handleDeleteArticle = async (articleId: string) => {
     try {
-      const { error } = await supabase.from('knowledge_base').delete().eq('id', articleId);
+      const { error } = await supabase
+        .from("knowledge_articles")
+        .delete()
+        .eq("article_id", articleId);
 
       if (error) throw error;
 
-      notifications.success('Article deleted successfully');
-      await fetchArticles();
+      toast({
+        title: "Success",
+        description: "Article deleted successfully",
+        variant: "default",
+      });
+      await fetchKnowledgeBase();
     } catch (error) {
-      console.error('Error:', error);
-      notifications.error('Failed to delete article');
+      toast({
+        title: "Error",
+        description: "Failed to delete article",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     }
   };
 
-  const resetForm = () => {
-    setTitle('');
-    setContent('');
-    setCategory('');
-    setTags('');
-    setFileIds([]);
+  const handleDeleteFAQ = async (faqId: string) => {
+    try {
+      const { error } = await supabase
+        .from("knowledge_faqs")
+        .delete()
+        .eq("faq_id", faqId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "FAQ deleted successfully",
+        variant: "default",
+      });
+      await fetchKnowledgeBase();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete FAQ",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
+    }
   };
-
-  const filteredArticles = articles.filter((article) => {
-    const matchesSearch =
-      article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      article.content.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesCategory = categoryFilter === 'all' || article.category === categoryFilter;
-
-    return matchesSearch && matchesCategory;
-  });
 
   if (loading) {
     return (
@@ -276,178 +188,101 @@ export default function KnowledgeBasePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Knowledge Base</h1>
-          <p className="text-muted-foreground">Manage your help articles and documentation</p>
+          <p className="text-muted-foreground">
+            Manage your knowledge base articles and FAQs
+          </p>
         </div>
-        <Dialog
-          open={showArticleDialog}
-          onOpenChange={(open) => {
-            setShowArticleDialog(open);
-            if (!open) {
-              setEditingArticle(null);
-              resetForm();
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button>
-              <FileText className="mr-2 h-4 w-4" />
-              Create Article
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>{editingArticle ? 'Edit Article' : 'Create Article'}</DialogTitle>
-              <DialogDescription>
-                {editingArticle
-                  ? 'Update the article content and settings.'
-                  : 'Create a new help article for your knowledge base.'}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Title</label>
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Enter article title"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Content</label>
-                <RichTextEditor
-                  onChange={setContent}
-                  initialContent={content}
-                  className="min-h-[200px]"
-                  placeholder="Write your article content here..."
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Category</label>
-                  <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Tags</label>
-                  <Input
-                    value={tags}
-                    onChange={(e) => setTags(e.target.value)}
-                    placeholder="Enter tags, separated by commas"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Attachments</label>
-                <FileUpload maxFiles={5} onUploadComplete={(ids) => setFileIds(ids)} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={handleSubmit}
-                disabled={submitting || !title.trim() || !content.trim() || !category}
-              >
-                {submitting ? 'Saving...' : editingArticle ? 'Save Changes' : 'Create'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-4">
+          <Button onClick={() => router.push("/admin/knowledge/new-article")}>
+            New Article
+          </Button>
+          <Button onClick={() => router.push("/admin/knowledge/new-faq")}>
+            New FAQ
+          </Button>
+        </div>
       </div>
 
       <Card>
-        <div className="flex gap-4 p-4">
+        <div className="p-4">
           <Input
-            placeholder="Search articles..."
+            placeholder="Search knowledge base..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="max-w-sm"
           />
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {CATEGORIES.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {cat}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[300px]">Title</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Tags</TableHead>
-              <TableHead>Views</TableHead>
+              <TableHead>Title</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Author</TableHead>
               <TableHead>Last Updated</TableHead>
-              <TableHead className="w-[100px]"></TableHead>
+              <TableHead className="w-[100px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredArticles.map((article) => (
-              <TableRow key={article.id}>
-                <TableCell className="font-medium">{article.title}</TableCell>
-                <TableCell>{article.category}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {article.tags?.map((tag) => (
-                      <Badge key={tag} variant="secondary">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>{article.views_count}</TableCell>
-                <TableCell>{new Date(article.updated_at).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(article)}>
-                      <Pencil className="h-4 w-4" />
+            {articles
+              .filter((article) =>
+                article.title.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+              .map((article) => (
+                <TableRow key={article.article_id}>
+                  <TableCell>{article.title}</TableCell>
+                  <TableCell>Article</TableCell>
+                  <TableCell>{article.created_by?.display_name}</TableCell>
+                  <TableCell>
+                    {new Date(article.updated_at || "").toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        router.push(`/admin/knowledge/${article.article_id}`)
+                      }
+                    >
+                      Edit
                     </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Article</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete this article? This action cannot be
-                            undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(article.id)}>
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleDeleteArticle(article.article_id)}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            {faqs
+              .filter((faq) =>
+                faq.question.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+              .map((faq) => (
+                <TableRow key={faq.faq_id}>
+                  <TableCell>{faq.question}</TableCell>
+                  <TableCell>FAQ</TableCell>
+                  <TableCell>{faq.created_by?.display_name}</TableCell>
+                  <TableCell>
+                    {new Date(faq.updated_at || "").toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        router.push(`/admin/knowledge/${faq.faq_id}`)
+                      }
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleDeleteFAQ(faq.faq_id)}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
           </TableBody>
         </Table>
       </Card>

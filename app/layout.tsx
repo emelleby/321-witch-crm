@@ -1,9 +1,9 @@
+import "./globals.css";
+
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
-import Link from "next/link";
-import { ThemeSwitcher } from "../components/theme-switcher";
-import { ToastContainer } from "../components/providers/toaster";
-import "./globals.css";
+
+import { Toaster } from "@/components/ui/toaster";
 
 const geistSans = Geist({
   display: "swap",
@@ -31,7 +31,7 @@ export default function RootLayout({
         >
           {children}
         </ThemeProvider>
-        <ToastContainer />
+        <Toaster />
       </body>
     </html>
   );

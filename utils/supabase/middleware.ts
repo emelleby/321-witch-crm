@@ -1,50 +1,47 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr"
-import { type NextRequest, NextResponse } from "next/server"
+import { createServerClient } from "@supabase/ssr";
+import { type NextRequest, NextResponse } from "next/server";
+import { type Database } from "@/database.types";
 
-export const updateSession = async (request: NextRequest) => {
-  try {
-    let response = NextResponse.next({
-      request: {
-        headers: request.headers,
-      },
-    })
+export const createMiddlewareClient = (request: NextRequest) => {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return request.cookies.get(name)?.value
-          },
-          set(name: string, value: string, options: CookieOptions) {
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        async getAll() {
+          return request.cookies.getAll().map(({ name, value }) => ({
+            name,
+            value,
+          }));
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set({
+              name,
+              value,
+              ...options,
+            });
+            response = NextResponse.next({
+              request: {
+                headers: request.headers,
+              },
+            });
             response.cookies.set({
               name,
               value,
               ...options,
-            })
-          },
-          remove(name: string, options: CookieOptions) {
-            response.cookies.set({
-              name,
-              value: '',
-              ...options,
-            })
-          },
+            });
+          });
         },
-      }
-    )
-
-    // Refresh the session if it exists
-    const { data: { session }, error } = await supabase.auth.getSession()
-
-    if (error) {
-      console.error('Session error:', error.message)
+      },
     }
+  );
 
-    return response
-  } catch (e) {
-    console.error('Middleware error:', e)
-    return NextResponse.next()
-  }
-}
+  return { supabase, response };
+};

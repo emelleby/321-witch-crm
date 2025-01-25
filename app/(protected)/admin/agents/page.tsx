@@ -1,36 +1,10 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { notifications } from '@/utils/notifications';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { UserPlus, Trash2 } from 'lucide-react';
+import { SupabaseClient } from "@supabase/supabase-js";
+import { Trash2, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,170 +15,216 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-type Agent = {
-  id: string;
-  email: string;
-  full_name: string;
-  role: 'agent' | 'admin';
-  created_at: string;
-};
+type UserProfile = Database["public"]["Tables"]["user_profiles"]["Row"];
 
-type AgentResponse = {
-  id: string;
-  full_name: string;
-  role: 'agent' | 'admin';
-  created_at: string;
-  email: {
-    email: string;
+interface Agent extends UserProfile {
+  organization: {
+    organization_name: string;
   } | null;
-};
+  team_memberships: Array<{
+    team: {
+      team_name: string;
+    };
+  }> | null;
+}
 
 export default function AgentsPage() {
-  const supabase = createClient();
+  const router = useRouter();
+  const [supabase, setSupabase] = useState<SupabaseClient<Database> | null>(
+    null
+  );
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'agent' | 'admin'>('agent');
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"agent" | "admin">("agent");
   const [inviting, setInviting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const { toast } = useToast();
+
+  const fetchAgents = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data: agents, error } = await supabase
+        .from("user_profiles")
+        .select(
+          `
+          *,
+          organization:organizations(organization_name),
+          team_memberships(
+            team:support_teams(team_name)
+          )
+        `
+        )
+        .eq("user_role", "agent");
+
+      if (error) throw error;
+
+      setAgents(agents || []);
+      setLoading(false);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load agents",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
+    }
+  }, [supabase, toast]);
 
   useEffect(() => {
-    fetchAgents();
-  }, [fetchAgents]);
+    const initSupabase = async () => {
+      const client = await createBrowserSupabaseClient();
+      setSupabase(client);
+    };
+    initSupabase();
+  }, []);
 
-  const fetchAgents = async () => {
+  useEffect(() => {
+    if (supabase) {
+      fetchAgents();
+    }
+  }, [supabase, fetchAgents]);
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !inviteEmail.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setInviting(true);
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Get user's organization
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.organization_id) return;
-
-      // Get all agents and admins in the organization
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*, auth_user:id(email)')
-        .eq('organization_id', profile.organization_id)
-        .in('role', ['agent', 'admin'])
-        .order('created_at', { ascending: false });
+      const { error } = await supabase.auth.admin.inviteUserByEmail(
+        inviteEmail.trim(),
+        {
+          data: {
+            user_role: inviteRole,
+            invited_by: user.id,
+          },
+        }
+      );
 
       if (error) throw error;
 
-      // Transform the data to handle the email join
-      const agentsWithEmail = (data as any[]).map((agent) => ({
-        id: agent.id,
-        full_name: agent.full_name,
-        role: agent.role,
-        created_at: agent.created_at,
-        email: agent.auth_user?.email || 'No email',
-      }));
-
-      setAgents(agentsWithEmail);
-    } catch (error) {
-      console.error('Error:', error);
-      notifications.error('Failed to load agents');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInvite = async () => {
-    if (!inviteEmail.trim()) {
-      notifications.error('Please enter an email address');
-      return;
-    }
-
-    setInviting(true);
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
-
-      // Get user's organization
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.organization_id) throw new Error('No organization found');
-
-      // Extract domain from email
-      const domain = inviteEmail.split('@')[1];
-
-      // Create invite
-      const { error: inviteError } = await supabase.from('invites').insert([
-        {
-          email: inviteEmail,
-          organization_id: profile.organization_id,
-          role: inviteRole,
-          domain,
-        },
-      ]);
-
-      if (inviteError) throw inviteError;
-
-      notifications.success('Invitation sent successfully');
-      setInviteEmail('');
+      toast({
+        title: "Success",
+        description: "Invitation sent successfully",
+        variant: "default",
+      });
+      setInviteEmail("");
       setShowInviteDialog(false);
       await fetchAgents();
     } catch (error) {
-      console.error('Error:', error);
-      notifications.error('Failed to send invitation');
+      toast({
+        title: "Error",
+        description: "Failed to send invitation",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     } finally {
       setInviting(false);
     }
   };
 
   const handleRemoveAgent = async (agentId: string) => {
+    if (!supabase) return;
     try {
-      // Update profile to remove organization_id
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ organization_id: null })
-        .eq('id', agentId);
-
-      if (profileError) throw profileError;
-
-      notifications.success('Agent removed successfully');
-      await fetchAgents();
-    } catch (error) {
-      console.error('Error:', error);
-      notifications.error('Failed to remove agent');
-    }
-  };
-
-  const handleRoleChange = async (agentId: string, newRole: 'agent' | 'admin') => {
-    try {
-      const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', agentId);
+      const { error } = await supabase
+        .from("user_profiles")
+        .update({ user_role: "customer" })
+        .eq("user_id", agentId);
 
       if (error) throw error;
 
-      notifications.success('Role updated successfully');
+      toast({
+        title: "Success",
+        description: "Agent removed successfully",
+        variant: "default",
+      });
       await fetchAgents();
     } catch (error) {
-      console.error('Error:', error);
-      notifications.error('Failed to update role');
+      toast({
+        title: "Error",
+        description: "Failed to remove agent",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     }
   };
 
-  const filteredAgents = agents.filter(
-    (agent) =>
-      agent.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      agent.email.toLowerCase().includes(searchQuery.toLowerCase())
+  const handleRoleChange = async (
+    agentId: string,
+    newRole: "agent" | "admin"
+  ) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from("user_profiles")
+        .update({ user_role: newRole })
+        .eq("user_id", agentId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Role updated successfully",
+        variant: "default",
+      });
+      await fetchAgents();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update role",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
+    }
+  };
+
+  const filteredAgents = agents.filter((agent) =>
+    agent.display_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (loading) {
@@ -220,38 +240,50 @@ export default function AgentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Agents</h1>
-          <p className="text-muted-foreground">Manage your support team</p>
+          <p className="text-muted-foreground">
+            Manage support agents and their roles
+          </p>
         </div>
         <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
           <DialogTrigger asChild>
             <Button>
-              <UserPlus className="mr-2 h-4 w-4" />
+              <UserPlus className="h-4 w-4 mr-2" />
               Invite Agent
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Invite Agent</DialogTitle>
-              <DialogDescription>Send an invitation to join your support team.</DialogDescription>
+              <DialogDescription>
+                Send an invitation to join as a support agent.
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <form onSubmit={handleInvite} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Email</label>
+                <label htmlFor="email" className="text-sm font-medium">
+                  Email Address
+                </label>
                 <Input
+                  id="email"
+                  type="email"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="agent@company.com"
-                  type="email"
+                  placeholder="agent@example.com"
+                  required
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Role</label>
+                <label htmlFor="role" className="text-sm font-medium">
+                  Role
+                </label>
                 <Select
                   value={inviteRole}
-                  onValueChange={(value: 'agent' | 'admin') => setInviteRole(value)}
+                  onValueChange={(value: "agent" | "admin") =>
+                    setInviteRole(value)
+                  }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a role" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="agent">Agent</SelectItem>
@@ -259,12 +291,15 @@ export default function AgentsPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <DialogFooter>
-              <Button onClick={handleInvite} disabled={inviting || !inviteEmail.trim()}>
-                {inviting ? 'Sending...' : 'Send Invitation'}
-              </Button>
-            </DialogFooter>
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  disabled={inviting || !inviteEmail.trim()}
+                >
+                  {inviting ? "Sending..." : "Send Invitation"}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
@@ -283,21 +318,28 @@ export default function AgentsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
+              <TableHead>Organization</TableHead>
+              <TableHead>Team</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead>Joined</TableHead>
-              <TableHead className="w-[100px]"></TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredAgents.map((agent) => (
-              <TableRow key={agent.id}>
-                <TableCell>{agent.full_name}</TableCell>
-                <TableCell>{agent.email}</TableCell>
+              <TableRow key={agent.user_id}>
+                <TableCell>{agent.display_name}</TableCell>
+                <TableCell>
+                  {agent.organization?.organization_name || "Unassigned"}
+                </TableCell>
+                <TableCell>
+                  {agent.team_memberships?.[0]?.team?.team_name || "Unassigned"}
+                </TableCell>
                 <TableCell>
                   <Select
-                    value={agent.role}
-                    onValueChange={(value: 'agent' | 'admin') => handleRoleChange(agent.id, value)}
+                    value={agent.user_role}
+                    onValueChange={(value: "agent" | "admin") =>
+                      handleRoleChange(agent.user_id, value)
+                    }
                   >
                     <SelectTrigger className="w-[100px]">
                       <SelectValue />
@@ -308,11 +350,14 @@ export default function AgentsPage() {
                     </SelectContent>
                   </Select>
                 </TableCell>
-                <TableCell>{new Date(agent.created_at).toLocaleDateString()}</TableCell>
                 <TableCell>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="hover:text-destructive">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="hover:text-destructive"
+                      >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </AlertDialogTrigger>
@@ -320,13 +365,15 @@ export default function AgentsPage() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Remove Agent</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Are you sure you want to remove this agent? They will lose access to the
-                          support system.
+                          Are you sure you want to remove this agent? They will
+                          lose access to the support system.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleRemoveAgent(agent.id)}>
+                        <AlertDialogAction
+                          onClick={() => handleRemoveAgent(agent.user_id)}
+                        >
                           Remove
                         </AlertDialogAction>
                       </AlertDialogFooter>

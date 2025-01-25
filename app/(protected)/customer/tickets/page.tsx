@@ -1,36 +1,56 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@/utils/supabase/client';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { useRouter } from 'next/navigation';
-import { notifications } from '@/utils/notifications';
-import { AdvancedSearch } from '@/components/tickets/advanced-search';
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
-type Ticket = {
-  id: string;
-  subject: string;
-  status: 'open' | 'pending' | 'closed';
-  priority: 'low' | 'normal' | 'high';
-  created_at: string;
-  updated_at: string;
-  unread_agent_messages: number;
-  organization_id: string | null;
+import { AdvancedSearch } from "@/components/tickets/advanced-search";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
+
+type Ticket = Database["public"]["Tables"]["support_tickets"]["Row"] & {
+  unread_customer_messages?: number;
 };
 
 type Organization = {
-  id: string;
-  name: string;
+  organization_id: string;
+  organization_name: string;
+};
+
+type FileAttachment = Pick<
+  Database["public"]["Tables"]["uploaded_files"]["Row"],
+  "file_id" | "file_name" | "file_type" | "storage_path"
+>;
+
+type SearchFilters = {
+  query?: string;
+  status?:
+    | Database["public"]["Tables"]["support_tickets"]["Row"]["ticket_status"]
+    | "";
+  priority?:
+    | Database["public"]["Tables"]["support_tickets"]["Row"]["ticket_priority"]
+    | "";
+  organizationId?: string;
+  useVectorSearch?: boolean;
 };
 
 export default function TicketsPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [files, setFiles] = useState<FileAttachment[]>([]);
 
   const fetchOrganizations = useCallback(async () => {
     try {
@@ -39,12 +59,15 @@ export default function TicketsPage() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase.from('organizations').select('id, name').order('name');
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("organization_id, organization_name")
+        .order("organization_name");
 
       if (error) throw error;
       setOrganizations(data);
     } catch (error) {
-      console.error('Error fetching organizations:', error);
+      console.error("Error fetching organizations:", error);
     }
   }, [supabase]);
 
@@ -57,44 +80,70 @@ export default function TicketsPage() {
 
       setLoading(true);
       const { data, error } = await supabase
-        .from('tickets')
-        .select('*')
-        .eq('creator_id', user.id)
-        .order('created_at', { ascending: false });
+        .from("support_tickets")
+        .select("*")
+        .eq("created_by_user_id", user.id)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setTickets(data);
     } catch (error) {
-      notifications.error('Failed to load tickets');
-      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load tickets",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     } finally {
       setLoading(false);
+    }
+  }, [supabase, toast]);
+
+  const fetchFiles = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: filesData, error: filesError } = await supabase
+        .from("uploaded_files")
+        .select("file_id, file_name, file_type, storage_path")
+        .eq("uploaded_by_user_id", user.id);
+
+      if (filesError) throw filesError;
+      setFiles(filesData);
+    } catch (error) {
+      console.error("Error fetching files:", error);
     }
   }, [supabase]);
 
   useEffect(() => {
     fetchOrganizations();
     fetchTickets();
-  }, [fetchOrganizations, fetchTickets]);
+    fetchFiles();
+  }, [fetchOrganizations, fetchTickets, fetchFiles]);
 
   useEffect(() => {
     // Subscribe to real-time updates
     const channel = supabase
-      .channel('tickets-updates')
+      .channel("tickets-updates")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'tickets',
+          event: "*",
+          schema: "public",
+          table: "support_tickets",
         },
         (payload) => {
-          if (payload.eventType === 'INSERT') {
+          if (payload.eventType === "INSERT") {
             setTickets((prev) => [payload.new as Ticket, ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
+          } else if (payload.eventType === "UPDATE") {
             setTickets((prev) =>
               prev.map((ticket) =>
-                ticket.id === payload.new.id ? (payload.new as Ticket) : ticket
+                ticket.ticket_id === payload.new.ticket_id
+                  ? (payload.new as Ticket)
+                  : ticket
               )
             );
           }
@@ -105,9 +154,9 @@ export default function TicketsPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [supabase]);
 
-  const handleSearch = async (filters: any) => {
+  const handleSearch = async (filters: SearchFilters) => {
     try {
       const {
         data: { user },
@@ -117,26 +166,25 @@ export default function TicketsPage() {
       setLoading(true);
 
       const { data, error } = await supabase
-        .rpc('search_tickets', {
-          search_query: filters.query || null,
-          status_filter: filters.status || null,
-          priority_filter: filters.priority || null,
-          category_ids: filters.categoryIds.length > 0 ? filters.categoryIds : null,
-          tag_ids: filters.tagIds.length > 0 ? filters.tagIds : null,
-          date_from: filters.dateFrom,
-          date_to: filters.dateTo,
-          organization_id: filters.organizationId || null,
-          assigned_to: null, // Not used in customer view
-          use_vector_search: filters.useVectorSearch,
-          similarity_threshold: 0.7,
-        })
-        .eq('creator_id', user.id);
+        .from("support_tickets")
+        .select("*")
+        .eq("created_by_user_id", user.id)
+        .order("created_at", { ascending: false })
+        .or(`status.eq.${filters.status},status.is.null`)
+        .or(`priority.eq.${filters.priority},priority.is.null`)
+        .or(
+          `organization_id.eq.${filters.organizationId},organization_id.is.null`
+        );
 
       if (error) throw error;
       setTickets(data);
     } catch (error) {
-      notifications.error('Failed to load tickets');
-      console.error('Error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load tickets",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
     } finally {
       setLoading(false);
     }
@@ -144,27 +192,27 @@ export default function TicketsPage() {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high':
-        return 'bg-red-500';
-      case 'normal':
-        return 'bg-yellow-500';
-      case 'low':
-        return 'bg-green-500';
+      case "high":
+        return "bg-red-500";
+      case "normal":
+        return "bg-yellow-500";
+      case "low":
+        return "bg-green-500";
       default:
-        return 'bg-gray-500';
+        return "bg-gray-500";
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'open':
-        return 'bg-green-500';
-      case 'pending':
-        return 'bg-yellow-500';
-      case 'closed':
-        return 'bg-gray-500';
+      case "open":
+        return "bg-green-500";
+      case "waiting_on_customer":
+        return "bg-yellow-500";
+      case "closed":
+        return "bg-gray-500";
       default:
-        return 'bg-gray-500';
+        return "bg-gray-500";
     }
   };
 
@@ -180,53 +228,109 @@ export default function TicketsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">My Tickets</h1>
-        <Button onClick={() => router.push('/customer/tickets/new')}>New Ticket</Button>
+        <Button onClick={() => router.push("/customer/tickets/new")}>
+          New Ticket
+        </Button>
       </div>
 
       <AdvancedSearch showOrganizationFilter={true} onSearch={handleSearch} />
 
       <div className="grid gap-4">
         {tickets.length === 0 ? (
-          <Card className="p-6 text-center text-muted-foreground">No tickets found</Card>
+          <Card className="p-6 text-center text-muted-foreground">
+            No tickets found
+          </Card>
         ) : (
           tickets.map((ticket) => (
             <Card
-              key={ticket.id}
+              key={ticket.ticket_id}
               className="cursor-pointer p-6 transition-colors hover:bg-accent"
-              onClick={() => router.push(`/customer/tickets/${ticket.id}`)}
+              onClick={() =>
+                router.push(`/customer/tickets/${ticket.ticket_id}`)
+              }
             >
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">{ticket.subject}</h3>
-                    {ticket.unread_agent_messages > 0 && (
-                      <Badge variant="destructive">{ticket.unread_agent_messages} new</Badge>
-                    )}
+                    <h3 className="font-semibold">{ticket.ticket_title}</h3>
+                    {ticket.unread_customer_messages &&
+                      ticket.unread_customer_messages > 0 && (
+                        <Badge variant="destructive">
+                          {ticket.unread_customer_messages} new
+                        </Badge>
+                      )}
                   </div>
                   <div className="flex gap-2 text-sm text-muted-foreground">
-                    <span>Created: {new Date(ticket.created_at).toLocaleDateString()}</span>
+                    <span>
+                      Created:{" "}
+                      {new Date(ticket.created_at || "").toLocaleDateString()}
+                    </span>
                     <span>•</span>
-                    <span>Updated: {new Date(ticket.updated_at).toLocaleDateString()}</span>
+                    <span>
+                      Updated:{" "}
+                      {new Date(ticket.updated_at || "").toLocaleDateString()}
+                    </span>
                     {ticket.organization_id && (
                       <>
                         <span>•</span>
                         <span>
-                          Organization:{' '}
-                          {organizations.find((org) => org.id === ticket.organization_id)?.name}
+                          Organization:{" "}
+                          {
+                            organizations.find(
+                              (org) =>
+                                org.organization_id === ticket.organization_id
+                            )?.organization_name
+                          }
                         </span>
                       </>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <div className={`h-2 w-2 rounded-full ${getPriorityColor(ticket.priority)}`} />
-                    <span className="text-sm text-muted-foreground">{ticket.priority}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className={`h-2 w-2 rounded-full ${getStatusColor(ticket.status)}`} />
-                    <span className="text-sm text-muted-foreground">{ticket.status}</span>
-                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`h-2 w-2 rounded-full ${getPriorityColor(
+                              ticket.ticket_priority
+                            )}`}
+                          />
+                          {ticket.ticket_priority}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {ticket.ticket_priority === "high" &&
+                          "Urgent issue requiring immediate attention"}
+                        {ticket.ticket_priority === "normal" &&
+                          "Standard priority issue"}
+                        {ticket.ticket_priority === "low" &&
+                          "Non-urgent issue that can be addressed later"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`h-2 w-2 rounded-full ${getStatusColor(
+                              ticket.ticket_status
+                            )}`}
+                          />
+                          {ticket.ticket_status}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {ticket.ticket_status === "open" &&
+                          "Ticket is active and awaiting response"}
+                        {ticket.ticket_status === "waiting_on_customer" &&
+                          "Ticket is awaiting your response"}
+                        {ticket.ticket_status === "closed" &&
+                          "Ticket has been resolved"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
             </Card>

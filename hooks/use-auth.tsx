@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
-import { User } from '@supabase/supabase-js';
+import { useEffect, useState } from "react";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
+import { User } from "@supabase/supabase-js";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -8,7 +8,7 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
+    const supabase = createBrowserSupabaseClient();
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {

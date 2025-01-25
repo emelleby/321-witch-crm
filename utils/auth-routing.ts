@@ -23,9 +23,9 @@ export async function handlePostLoginRouting(
 
   // 3. Get the user's profile
   const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("role, organization_id")
-    .eq("id", user.id)
+    .from("user_profiles")
+    .select("user_role, organization_id")
+    .eq("user_id", user.id)
     .single();
 
   if (profileError || !profile) {
@@ -35,7 +35,7 @@ export async function handlePostLoginRouting(
   }
 
   // 4. Route based on role
-  switch (profile.role) {
+  switch (profile.user_role) {
     case "admin":
       router.push("/admin/dashboard");
       break;

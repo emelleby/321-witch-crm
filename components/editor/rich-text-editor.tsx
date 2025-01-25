@@ -1,34 +1,33 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { LexicalComposer } from '@lexical/react/LexicalComposer';
-import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
-import { ContentEditable } from '@lexical/react/LexicalContentEditable';
-import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
+import { CodeHighlightNode, CodeNode } from '@lexical/code';
+import { $generateNodesFromDOM } from '@lexical/html';
+import { AutoLinkNode, LinkNode } from '@lexical/link';
+import { ListItemNode, ListNode } from '@lexical/list';
+import {
+  $convertFromMarkdownString,
+  TextMatchTransformer,
+  TRANSFORMERS,
+} from '@lexical/markdown';
 import { AutoFocusPlugin } from '@lexical/react/LexicalAutoFocusPlugin';
+import { LexicalComposer } from '@lexical/react/LexicalComposer';
+import { ContentEditable } from '@lexical/react/LexicalContentEditable';
+import LexicalErrorBoundary from '@lexical/react/LexicalErrorBoundary';
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
-import {
-  TRANSFORMERS,
-  $convertFromMarkdownString,
-  $convertToMarkdownString,
-  ElementTransformer,
-  TextMatchTransformer,
-} from '@lexical/markdown';
-import LexicalErrorBoundary from '@lexical/react/LexicalErrorBoundary';
+import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
+import { TablePlugin as LexicalTablePlugin } from '@lexical/react/LexicalTablePlugin';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { TableCellNode, TableNode, TableRowNode } from '@lexical/table';
-import { ListItemNode, ListNode } from '@lexical/list';
-import { CodeHighlightNode, CodeNode } from '@lexical/code';
-import { AutoLinkNode, LinkNode } from '@lexical/link';
-import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
-import { ToolbarPlugin } from './plugins/toolbar';
-import { OnChangePlugin } from './plugins/on-change';
-import { cn } from '@/lib/utils';
-import { ImageNode, $createImageNode } from './nodes/image-node';
 import { LexicalEditor, LexicalNode } from 'lexical';
-import { TablePlugin as LexicalTablePlugin } from '@lexical/react/LexicalTablePlugin';
+
+import { cn } from '@/lib/utils';
+
+import { $createImageNode,ImageNode } from './nodes/image-node';
+import { OnChangePlugin } from './plugins/on-change';
+import { ToolbarPlugin } from './plugins/toolbar';
 
 const theme = {
   // Theme styling goes here

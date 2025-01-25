@@ -1,48 +1,329 @@
 # Witch House CRM Directory Structure
 
-## Root Directory
+Generated on: 2025-01-24 19:05:17 CST
 
 ```
-├── app/                    # Next.js application routes and pages
-├── components/            # Reusable React components
-├── docs/                  # Project documentation
-├── hooks/                # Custom React hooks
-├── lib/                  # Core libraries and utilities
-├── public/               # Static assets
-├── scripts/              # Utility scripts
-├── supabase/             # Supabase configuration and migrations
-└── utils/                # Helper functions and utilities
-```
-
-## Application Routes
-
-```
-app/
-├── (protected)/          # Routes requiring authentication
-│   ├── admin/           # Admin-only routes
-│   ├── agent/           # Agent-specific routes
-│   ├── customer/        # Customer-specific routes
-│   └── organization/    # Organization management routes
-├── login/               # Authentication routes
-├── register/           # User registration
-├── reset-password/     # Password reset flow
-├── forgot-password/    # Password recovery
-├── verify-email/       # Email verification
-├── forums/             # Public forums
-└── error/              # Error pages
-```
-
-## Component Organization
-
-```
-components/
-├── admin/              # Admin-specific components
-├── agent/             # Agent workspace components
-├── article/           # Knowledge base article components
-├── customer/          # Customer portal components
-├── editor/            # Rich text editor components
-├── forms/             # Reusable form components
-├── layout/            # Layout components
-├── shared/            # Shared/common components
-└── ui/                # UI primitives (Shadcn)
+├── .vscode/
+    └── settings.json
+├── app/
+    ├── (protected)/
+        ├── admin/
+            ├── agents/
+                └── page.tsx
+            ├── categories/
+                └── page.tsx
+            ├── dashboard/
+                ├── layout.tsx
+                └── page.tsx
+            ├── knowledge/
+                ├── [id]/
+                    └── page.tsx
+                ├── page.tsx
+            ├── reports/
+                └── page.tsx
+            ├── teams/
+                └── page.tsx
+            ├── templates/
+                └── page.tsx
+            ├── layout.tsx
+        ├── agent/
+            ├── dashboard/
+                ├── layout.tsx
+                └── page.tsx
+            ├── knowledge/
+                └── page.tsx
+            ├── profile/
+                └── page.tsx
+            ├── tickets/
+                ├── [id]/
+                    └── page.tsx
+                ├── page.tsx
+            ├── layout.tsx
+        ├── customer/
+            ├── dashboard/
+                └── page.tsx
+            ├── knowledge/
+                ├── [id]/
+                    └── page.tsx
+                ├── page.tsx
+            ├── profile/
+                └── page.tsx
+            ├── tickets/
+                ├── [id]/
+                    └── page.tsx
+                ├── new/
+                    └── page.tsx
+                ├── page.tsx
+            ├── layout.tsx
+    ├── api/
+        ├── tickets/
+            ├── process/
+                └── route.ts
+    ├── confirm/
+        └── route.ts
+    ├── error/
+        └── page.tsx
+    ├── forgot-password/
+        └── page.tsx
+    ├── login/
+        ├── actions.ts
+        ├── layout.tsx
+        ├── metadata.ts
+        └── page.tsx
+    ├── register/
+        └── page.tsx
+    ├── reset-password/
+        └── page.tsx
+    ├── verify-email/
+        ├── layout.tsx
+        └── page.tsx
+    ├── favicon.ico
+    ├── globals.css
+    ├── layout.tsx
+    ├── page.tsx
+├── components/
+    ├── admin/
+        └── ticket-categories.tsx
+    ├── article/
+        ├── article-detail.tsx
+        └── version-history.tsx
+    ├── auth/
+        ├── fields/
+            ├── EmailField.tsx
+            ├── FullNameField.tsx
+            ├── OrganizationDomainField.tsx
+            ├── OrganizationNameField.tsx
+            ├── OrganizationTypeField.tsx
+            └── PasswordField.tsx
+        ├── AccountTypeSelector.tsx
+        ├── LoginForm.tsx
+        ├── RegisterForm.tsx
+    ├── chat/
+        ├── chat-interface.tsx
+        └── message-item.tsx
+    ├── editor/
+        ├── nodes/
+            └── image-node.tsx
+        ├── plugins/
+            ├── code.tsx
+            ├── on-change.tsx
+            ├── preview.tsx
+            ├── table.tsx
+            └── toolbar.tsx
+        ├── rich-text-editor.tsx
+    ├── providers/
+    ├── sidebar/
+        ├── admin-sidebar.tsx
+        ├── agent-sidebar.tsx
+        ├── base-sidebar.tsx
+        └── customer-sidebar.tsx
+    ├── tickets/
+        └── advanced-search.tsx
+    ├── typography/
+        └── inline-code.tsx
+    ├── ui/
+        ├── accordion.tsx
+        ├── alert-dialog.tsx
+        ├── alert.tsx
+        ├── aspect-ratio.tsx
+        ├── avatar.tsx
+        ├── badge.tsx
+        ├── breadcrumb.tsx
+        ├── button.tsx
+        ├── calendar.tsx
+        ├── card.tsx
+        ├── carousel.tsx
+        ├── chart.tsx
+        ├── checkbox.tsx
+        ├── collapsible.tsx
+        ├── command.tsx
+        ├── context-menu.tsx
+        ├── dialog.tsx
+        ├── drawer.tsx
+        ├── dropdown-menu.tsx
+        ├── form.tsx
+        ├── hover-card.tsx
+        ├── input-otp.tsx
+        ├── input.tsx
+        ├── label.tsx
+        ├── menubar.tsx
+        ├── navigation-menu.tsx
+        ├── pagination.tsx
+        ├── popover.tsx
+        ├── progress.tsx
+        ├── radio-group.tsx
+        ├── resizable.tsx
+        ├── scroll-area.tsx
+        ├── select.tsx
+        ├── separator.tsx
+        ├── sheet.tsx
+        ├── sidebar.tsx
+        ├── skeleton.tsx
+        ├── slider.tsx
+        ├── sonner.tsx
+        ├── switch.tsx
+        ├── table.tsx
+        ├── tabs.tsx
+        ├── textarea.tsx
+        ├── toast.tsx
+        ├── toaster.tsx
+        ├── toggle-group.tsx
+        ├── toggle.tsx
+        └── tooltip.tsx
+    ├── file-upload.tsx
+    ├── page-header.tsx
+    ├── theme-switcher.tsx
+    ├── ticket-feedback.tsx
+├── cursor_agent_functions/
+    ├── generate_project_structure.sh
+    ├── get_local_datetime.sh
+    ├── get_local_vars.sh
+    └── get_project_structure.sh
+├── docs/
+    ├── mermaid_diagrams/
+        └── ai_agent_flow.mmd
+    ├── Project Requirements.md
+    ├── directory_structure.md
+    ├── mermaid_index.md
+    ├── openai_assistant_planning.md
+    ├── project_owner_notes.md
+├── hooks/
+    ├── auth/
+        ├── useLogin.ts
+        └── useRegistration.ts
+    ├── use-auth.tsx
+    ├── use-chat-updates.ts
+    ├── use-file-upload.ts
+    ├── use-mobile.tsx
+    ├── use-team-management.ts
+    ├── use-ticket-updates.ts
+    ├── use-toast.ts
+├── lib/
+    ├── server/
+        ├── ai/
+            ├── TODO.md
+            └── chain.ts
+        ├── shared/
+            └── get-user-info.ts
+    ├── services/
+        └── auth.ts
+    ├── sql_queries/
+    ├── utils/
+        └── validation.ts
+    ├── utils.ts
+├── playwright-report/
+    └── index.html
+├── public/
+    ├── images/
+        ├── 08.png
+        ├── Shapes 14.png
+        ├── Shapes 2.png
+        ├── Shapes 25.png
+        ├── Shapes 4.png
+        ├── Shapes 5.png
+        ├── shape-05.png
+        ├── shape-09.png
+        ├── shape-12.png
+        ├── shape-21.png
+        └── shape-47.png
+├── supabase/
+    ├── .branches/
+        └── _current_branch
+    ├── .temp/
+        ├── cli-latest
+        ├── gotrue-version
+        ├── pooler-url
+        ├── postgres-version
+        ├── project-ref
+        ├── rest-version
+        └── storage-version
+    ├── functions/
+        ├── _shared/
+            └── cors.ts
+        ├── generate_embeddings/
+            ├── .npmrc
+            ├── deno.json
+            ├── deno.lock
+            └── index.ts
+        ├── .env
+    ├── migrations/
+        └── 00001_initial.sql
+    ├── tests/
+        ├── database/
+            ├── login.test.sql
+            └── registration.test.sql
+    ├── config.toml
+├── test-results/
+    └── .last-run.json
+├── tests/
+    ├── components/
+        ├── auth/
+            ├── fields/
+                ├── EmailField.test.tsx
+                ├── FullNameField.test.tsx
+                ├── OrganizationDomainField.test.tsx
+                ├── OrganizationNameField.test.tsx
+                ├── OrganizationTypeField.test.tsx
+                └── PasswordField.test.tsx
+            ├── AccountTypeSelector.test.tsx
+            ├── LoginForm.test.tsx
+            ├── RegisterForm.test.tsx
+    ├── e2e/
+        ├── auth.spec.ts
+        └── registration.spec.ts
+    ├── fixtures/
+    ├── helpers/
+        └── toast.ts
+    ├── hooks/
+        └── useLogin.test.ts
+    ├── integration/
+        ├── api/
+            ├── auth/
+                └── register.test.ts
+        ├── auth/
+    ├── mocks/
+    ├── setup/
+        ├── handlers.ts
+        └── test-setup.ts
+    ├── unit/
+        ├── utils/
+            ├── supabase/
+                └── server-client.test.ts
+            ├── validation.test.ts
+    ├── utils/
+├── utils/
+    ├── supabase/
+        ├── client.ts
+        ├── middleware.ts
+        ├── server-client.ts
+        └── server.ts
+    ├── auth-routing.ts
+    ├── markdown.ts
+    ├── utils.ts
+├── .cursorignore
+├── .cursorrules
+├── .dockerignore
+├── .env.example
+├── .env.local
+├── .env.prod
+├── .envrc
+├── .eslintrc.json
+├── .rules.TEMPLATE
+├── Dockerfile.dev
+├── LICENSE
+├── README.md
+├── TODO.md
+├── components.json
+├── database.types.ts
+├── next-env.d.ts
+├── next.config.ts
+├── output.png
+├── package.json
+├── playwright.config.ts
+├── pnpm-lock.yaml
+├── postcss.config.js
+├── process_template.sh
+├── tailwind.config.ts
+├── tsconfig.json
+├── vitest.config.mts
 ```

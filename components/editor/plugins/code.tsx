@@ -1,12 +1,12 @@
 'use client'
 
-import { useCallback, useEffect } from 'react'
+import { $createCodeNode , registerCodeHighlighting } from '@lexical/code'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { $createCodeNode } from '@lexical/code'
-import { $getSelection, $isRangeSelection } from 'lexical'
-import { registerCodeHighlighting } from '@lexical/code'
 import { $setBlocksType } from '@lexical/selection'
+import { $getSelection, $isRangeSelection } from 'lexical'
 import { Code2 } from 'lucide-react'
+import { useCallback, useEffect } from 'react'
+
 import { Button } from '@/components/ui/button'
 
 export function CodePlugin() {

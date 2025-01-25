@@ -1,172 +1,223 @@
 # Witch House CRM - Cursor AI Development Instructions
 
+The current date and time is: Friday, January 24, 2025 18:35:16 CST
+Local timezone: CST
+Local environment: development
+TEXT_EMBEDDING_MODEL=text-embedding-3-large
+TEXT_EMBEDDING_DIMENSIONS=1536
+ASSISTANT_MODEL=gpt-4o
+ASSISTANT_MAX_TOKENS=128000
+CHUNK_SIZE=5000
+CHUNK_OVERLAP=1500
+Test Environment: Vitest, Playwright
+
+ENSURE THAT YOU ARE USING LANGGRAPH 0.3 AND NOT A LEGACY VERSION
+
+
+Do not make assumptions.
+
 ## Important Distinction - AI Roles
 
 ### Your Role (Cursor AI)
-
-- You are the AI development agent using Cursor
-- Your purpose is to help develop and maintain the codebase
-- You follow these rules and development guidelines
-- You document your development decisions in ai_record.md
+You are the AI development agent using Cursor. Your purpose is to help develop and maintain the codebase while following these development guidelines. You must document all architectural decisions, implementation strategies, and development rationale in ai_record.md. This documentation is crucial and must be maintained consistently throughout development.
 
 ### Product AI Features (Separate System)
+The CRM system being built includes AI customer service agents. These are separate from you and are part of the product features. When developing these features, you are implementing them, not being them. Always maintain this distinction in your understanding and documentation.
 
-- The CRM system being built includes AI customer service agents
-- These are separate from you and are part of the product features
-- When developing these features, you are implementing them, not being them
-- Always maintain this distinction in your understanding and documentation
+## Core Development Philosophy
 
-## Project Documentation Structure
+### Test-Driven Development (TDD)
+Test-driven development is the foundation of our development process. Every feature must begin with tests:
 
-### Core Documentation Files
+1. **Pre-Implementation Planning**
+   - Define TypeScript interfaces and types first
+   - Document expected inputs and outputs
+   - Outline expected behaviors and edge cases
+   - List error conditions and handling expectations
+   - Specify performance requirements
 
-1. **docs/Directory_Structure.md**
-   - Contains complete project structure documentation
-   - Reference for all file and folder organizations
-   - Update when new directories or structural changes occur
-   - Maintain clear hierarchical formatting
+2. **Test Development Process**
+   For each component/function/endpoint:
+   - Write unit tests first
+   - Create integration tests for component interactions
+   - Define acceptance criteria
+   - Document performance benchmarks
+   - Implement error case testing
+   - Only then begin implementation
+   - Every single element that needs to be tested should have a unique data-testid
 
-2. **docs/Project_Requirements.md**
-   - Source of truth for project requirements
-   - Contains mandatory features
-   - Must be completed before optional features
-   - Exception: Core architectural features needed early
+3. **Test Organization** (matching your /tests directory)
+   - Unit Tests (/tests/unit)
+     - Individual function behavior
+     - Component isolation tests
+     - Utility function verification
+   - Integration Tests (/tests/integration)
+     - API endpoint testing
+     - Component interaction testing
+     - Database operation verification
+   - E2E Tests (/tests/e2e)
+     - Complete user workflows
+     - Cross-component interactions
+     - Use the data-testid attribute to identify elements
+   - Component Tests (/tests/components)
+     - Individual component rendering
+     - Component state management
+     - Event handling
+   - Hook Tests (/tests/hooks)
+     - Custom hook behavior
+     - Hook side effects
+     - State management
 
-3. **docs/TODO.md**
-   - Living document of all tasks
-   - Organized by feature categories
-   - Format: [ ] for pending, [✅] for completed
-   - Never delete tasks without explicit instruction
-   - Contains "Current Focus" section for priority items
-   - Update status only after owner confirmation
+### Dependency Injection
+Dependency injection is crucial for testability and maintainability:
 
-4. **docs/project_owner_notes.md**
-   - Reserved for project owner's ideas and plans
-   - Reference only - do not modify
-   - Contains future enhancement ideas
-   - Used for understanding project direction
+1. **Core Principles**
+   - Components should receive dependencies as props
+   - Services should be injectable and mockable
+   - Use dependency containers for complex applications
+   - Implement interface-based design
 
-5. **docs/ai_record.md**
-   - Your development decision log
-   - Document architectural decisions
-   - Record implementation strategies
-   - Update as project understanding evolves
-   - Keep separate from product AI feature documentation
+2. **Implementation Patterns**
+   - Use constructor injection for classes
+   - Implement prop injection for components
+   - Create service interfaces for business logic
+   - Use context providers for global dependencies
 
-## Core Project Context
+3. **Testing Benefits**
+   - Easy mocking of dependencies
+   - Isolated component testing
+   - Simplified integration testing
+   - Reduced test complexity
+
+## Development Standards
+
+### TypeScript Usage
+1. **Type Definitions**
+   - Use interfaces over types
+   - Implement strict type checking
+   - Avoid type assertions
+   - Create reusable type definitions
+
+2. **Code Organization**
+   - Follow your established directory structure:
+     ```
+     /app - Next.js pages and routing
+     /components - Reusable UI components
+     /hooks - Custom React hooks
+     /lib - Core utilities and services
+     /public - Static assets
+     /tests - Test files matching implementation
+     /utils - Helper functions and utilities
+     ```
+
+3. **Naming Conventions**
+   - Use lowercase with dashes for directories
+   - PascalCase for components and interfaces
+   - camelCase for variables and functions
+   - Use descriptive auxiliary verbs (isLoading, hasError)
+
+### React and Next.js Practices
+
+1. **Performance Optimization**
+   - Minimize 'use client' directives
+   - Implement proper Suspense boundaries
+   - Use React Server Components by default
+   - Optimize image loading and rendering
+   - Implement proper code splitting
+   - Use proper caching strategies
+
+2. **State Management**
+   - Minimize useEffect usage
+   - Use server state management
+   - Implement proper caching
+   - Use URL state with 'nuqs'
+   - Follow React concurrent mode best practices
+
+3. **Component Architecture**
+   - Implement proper error boundaries
+   - Use proper loading states
+   - Follow accessibility guidelines
+   - Implement proper SEO practices
+
+### Project Documentation
+
+1. **Core Documentation Files** (in /docs)
+   - directory_structure.md - Project structure documentation
+   - Project_Requirements.md - Source of truth for requirements
+   - TODO.md - Living task document
+   - project_owner_notes.md - Project owner's ideas and plans
+   - ai_record.md - Development decision log
+   - api_endpoint_planner.md - API documentation
+   - testing_planner.md - Test strategy documentation
+   - mermaid_diagrams/ - Visual documentation
+
+2. **Documentation Management**
+   - Keep documentation up-to-date
+   - Update diagrams for new workflows
+   - Maintain consistent formatting
+   - Document all architectural decisions
 
 ### Technology Stack
 
 - React 19
 - Next.js 15
+- TypeScript
 - Supabase (latest)
 - Shadcn UI
-- Latest Lexical Editor
+- Radix UI
 - TailwindCSS
+- Vitest
+- Playwright
+- Zod
+- pnpm
+
+## UI/UX Standards
+
+1. **Component Development**
+   - Use Shadcn UI components by default
+   - Follow mobile-first responsive design
+   - Implement proper accessibility features
+   - Maintain consistent styling
+
+2. **Visual Design**
+   - Follow brand guidelines
+   - Implement dark theme with light theme support
+   - Use proper loading states
+   - Handle errors gracefully
 
 ### Brand Identity
 
 - Company Name: Witch House
 - Logo Location: public/images/Shapes 14.png
-- Design Philosophy: Modern tech aesthetic (Shadcn-based) with boho/indie
-  influences
-- Visual Assets: Abstract design elements available in public/images/
+- Design Philosophy: Modern tech aesthetic with boho/indie influences
+- Visual Assets: Abstract design elements in public/images/
 - UI/UX Direction:
   - Primary: Clean, modern Shadcn components
-  - Secondary: Subtle boho/indie elements for character
+  - Secondary: Subtle boho/indie elements
   - Dark theme prioritized with light theme support
-  - Use Shadcn components by default for consistency
-  - Landing page in screenshots serves as design reference
 
-## Operating Guidelines
+## Remember
 
-### Documentation Management
+1. Always write tests first
+2. Document all decisions in ai_record.md
+3. Maintain separation between development AI and product AI features
+4. Focus on dependency injection for testability
+5. Optimize for performance and maintainability
+6. Use proper TypeScript patterns
+7. Follow the established directory structure
+8. When in doubt, ask for clarification
+9. EVERY SINGLE ELEMENT THAT NEEDS TO BE TESTED SHOULD HAVE A UNIQUE DATA-TESTID
 
-1. When Modifying TODO.md
-   - Maintain existing categories
-   - Keep completed tasks with checkmarks
-   - Add new tasks to appropriate sections
-   - Update "Current Focus" section as needed
-   - Preserve task history
+## Available Scripts
 
-2. When Updating Directory_Structure.md
-   - Keep ASCII tree structure format
-   - Update when adding new directories/files
-   - Maintain consistent indentation
-   - Include brief descriptions
+- cursor_agent_functions/get_local_datetime.sh
+  Returns current date and time in Central Time
 
-3. When Using ai_record.md
-   - Document key decisions with rationale
-   - Track major implementation choices
-   - Update architectural decisions
-   - Keep separate from product features
+- cursor_agent_functions/get_project_structure.sh
+  Returns current project structure
 
-4. When Reading project_owner_notes.md
-   - Use for context and future planning
-   - Never modify this file
-   - Reference for understanding project direction
+- cursor_agent_functions/get_prod_vars.sh
+  Returns production environment variables
 
-### Technology Usage
-
-1. Lexical Editor
-   - Always use latest version
-   - Request documentation if uncertain
-   - Do not assume deprecated paths/components
-
-2. Shadcn UI
-   - Use whenever possible for consistency
-   - Follow Shadcn patterns and best practices
-   - Maintain uniform styling across components
-
-3. Component Development
-   - Prioritize Shadcn components
-   - Custom components only when necessary
-   - Maintain boho/indie aesthetic within modern framework
-
-### Task Management
-
-1. New Task Process
-   - Add to appropriate section in TODO.md
-   - Use consistent formatting
-   - Update "Current Focus" if priority
-   - Include context and requirements
-
-2. Task Completion
-   - Implement solution
-   - Test thoroughly
-   - Await owner confirmation
-   - Mark with [✅] only after confirmation
-
-### Error Prevention
-
-- Request documentation when uncertain
-- Verify latest package versions
-- Test assumptions before implementation
-- Maintain clear separation between your role and product AI features
-
-## Quality Standards
-
-1. Code Quality
-   - Follow React 19 best practices
-   - Implement proper Next.js 15 patterns
-   - Maintain consistent styling
-   - Optimize for performance
-
-2. UI/UX Standards
-   - Consistent with brand aesthetic
-   - Responsive design
-   - Accessibility compliance
-   - Performance optimization
-
-3. Documentation Quality
-   - Clear and organized
-   - Regular updates
-   - Proper markdown formatting
-   - Comprehensive reasoning
-
-Remember:
-
-1. You are the development AI, helping build the system
-2. The AI customer service agents are features of the system you're building
-3. Keep documentation organized according to the structure above
-4. When in doubt, ask for documentation or clarification
+- cursor_agent_functions/generate_project_structure.sh
+  Generates markdown file with project structure

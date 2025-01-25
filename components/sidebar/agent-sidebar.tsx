@@ -1,13 +1,15 @@
-'use client';
+"use client";
 
-import { BaseSidebar } from './base-sidebar';
-import { useEffect, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
-import { RealtimeChannel } from '@supabase/supabase-js';
+import { RealtimeChannel } from "@supabase/supabase-js";
+import { useEffect, useState } from "react";
+
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
+
+import { BaseSidebar } from "./base-sidebar";
 
 export function AgentSidebar() {
   const [unreadCount, setUnreadCount] = useState(0);
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
 
   useEffect(() => {
     let channel: RealtimeChannel;
@@ -20,31 +22,31 @@ export function AgentSidebar() {
 
       // Get initial unread count
       const { data: tickets } = await supabase
-        .from('tickets')
-        .select('id')
-        .eq('assigned_to', user.id)
-        .gt('unread_customer_messages', 0);
+        .from("support_tickets")
+        .select("id")
+        .eq("assigned_to_user_id", user.id)
+        .gt("unread_customer_messages", 0);
 
       setUnreadCount(tickets?.length || 0);
 
       // Subscribe to changes
       channel = supabase
-        .channel('agent-ticket-updates')
+        .channel("agent-ticket-updates")
         .on(
-          'postgres_changes',
+          "postgres_changes",
           {
-            event: '*',
-            schema: 'public',
-            table: 'tickets',
-            filter: `assigned_to=eq.${user.id}`,
+            event: "*",
+            schema: "public",
+            table: "support_tickets",
+            filter: `assigned_to_user_id=eq.${user.id}`,
           },
           async () => {
             // Refresh unread count on any ticket changes
             const { data: updatedTickets } = await supabase
-              .from('tickets')
-              .select('id')
-              .eq('assigned_to', user.id)
-              .gt('unread_customer_messages', 0);
+              .from("support_tickets")
+              .select("id")
+              .eq("assigned_to_user_id", user.id)
+              .gt("unread_customer_messages", 0);
 
             setUnreadCount(updatedTickets?.length || 0);
           }
@@ -59,12 +61,12 @@ export function AgentSidebar() {
         supabase.removeChannel(channel);
       }
     };
-  }, []);
+  }, [supabase]);
 
   const agentNavItems = [
     {
-      title: 'Dashboard',
-      href: '/agent/dashboard',
+      title: "Dashboard",
+      href: "/agent/dashboard",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -85,8 +87,8 @@ export function AgentSidebar() {
       ),
     },
     {
-      title: 'My Tickets',
-      href: '/agent/tickets',
+      title: "My Tickets",
+      href: "/agent/tickets",
       badge: unreadCount,
       icon: (
         <svg
@@ -106,8 +108,8 @@ export function AgentSidebar() {
       ),
     },
     {
-      title: 'Knowledge Base',
-      href: '/agent/knowledge',
+      title: "Knowledge Base",
+      href: "/agent/knowledge",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -126,8 +128,8 @@ export function AgentSidebar() {
       ),
     },
     {
-      title: 'Profile',
-      href: '/agent/profile',
+      title: "Profile",
+      href: "/agent/profile",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"

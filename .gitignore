@@ -1,5 +1,5 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
+**/.DS_STORE
 # dependencies
 /node_modules
 /.pnp
@@ -55,3 +55,14 @@ deno.lock
 !components/**
 
 .env.prod
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+old_migrations/
+cursor_agent_functions/
+.rules.TEMPLATE

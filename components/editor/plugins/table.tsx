@@ -1,21 +1,20 @@
 'use client'
 
-import { useCallback, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
     INSERT_TABLE_COMMAND,
-    $createTableNodeWithDimensions,
 } from '@lexical/table'
-import { $createParagraphNode, $getSelection, $isRangeSelection } from 'lexical'
 import { Table } from 'lucide-react'
+import { useCallback, useState } from 'react'
+
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
 
 export function TablePlugin() {
     const [editor] = useLexicalComposerContext()

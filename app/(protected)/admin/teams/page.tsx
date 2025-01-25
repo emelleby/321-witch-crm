@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { createClient } from "@/utils/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { notifications } from "@/utils/notifications";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -16,13 +14,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -31,188 +25,289 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-type Team = {
-  id: string;
-  name: string;
-  description: string;
-  created_at: string;
-  member_count: number;
-};
-
-type TeamMember = {
-  id: string;
-  full_name: string;
-  email: string;
-  role: string;
+type UserProfile = Database["public"]["Tables"]["user_profiles"]["Row"];
+type Team = Database["public"]["Tables"]["support_teams"]["Row"] & {
+  team_memberships: Array<{
+    user: UserProfile;
+  }>;
 };
 
 export default function TeamsPage() {
-  const supabase = createClient();
+  const router = useRouter();
+  const supabase = createBrowserSupabaseClient();
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamMembers, setTeamMembers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [availableAgents, setAvailableAgents] = useState<TeamMember[]>([]);
+  const [availableAgents, setAvailableAgents] = useState<UserProfile[]>([]);
+  const [showDialog, setShowDialog] = useState(false);
+  const [teamForm, setTeamForm] = useState({
+    name: "",
+    description: "",
+  });
+  const { toast } = useToast();
 
-  useEffect(() => {
-    fetchTeams();
-  }, []);
-
-  useEffect(() => {
-    if (selectedTeam) {
-      fetchTeamMembers(selectedTeam.id);
-      fetchAvailableAgents();
-    }
-  }, [selectedTeam]);
-
-  const fetchTeams = async () => {
+  const fetchTeams = useCallback(async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.organization_id) return;
-
-      const { data: teams } = await supabase
-        .from("teams")
+      const { data, error } = await supabase
+        .from("support_teams")
         .select(
           `
-                    *,
-                    member_count:team_members(count)
-                `
+          *,
+          team_memberships(
+            user:user_profiles(*)
+          )
+        `
         )
-        .eq("organization_id", profile.organization_id);
+        .order("team_name");
 
-      setTeams(teams || []);
+      if (error) throw error;
+      setTeams(data || []);
     } catch (error) {
-      console.error("Error:", error);
-      notifications.error("Failed to load teams");
+      console.error("Error fetching teams:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load teams",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, toast]);
 
-  const fetchTeamMembers = async (teamId: string) => {
+  const fetchAvailableAgents = useCallback(async () => {
     try {
-      const { data } = await supabase
-        .from("team_members")
+      const { data, error } = await supabase
+        .from("user_profiles")
         .select(
           `
-                    profiles (
-                        id,
-                        full_name,
-                        email,
-                        role
-                    )
-                `
+          user_id,
+          display_name,
+          avatar_file_id,
+          created_at,
+          updated_at,
+          organization_id,
+          user_role
+        `
         )
-        .eq("team_id", teamId);
+        .eq("user_role", "agent")
+        .order("display_name");
 
-      setTeamMembers(data?.map((d) => d.profiles) || []);
+      if (error) throw error;
+      setAvailableAgents(data || []);
     } catch (error) {
-      console.error("Error:", error);
-      notifications.error("Failed to load team members");
+      console.error("Error fetching available agents:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load available agents",
+        variant: "destructive",
+      });
     }
-  };
+  }, [supabase, toast]);
 
-  const fetchAvailableAgents = async () => {
+  const fetchTeamMembers = useCallback(async () => {
+    if (!selectedTeam?.team_id) return;
+
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data, error } = await supabase
+        .from("team_memberships")
+        .select(
+          `
+          *,
+          user:user_profiles(*)
+        `
+        )
+        .eq("team_id", selectedTeam.team_id);
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.organization_id) return;
-
-      const { data: agents } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, role")
-        .eq("organization_id", profile.organization_id)
-        .eq("role", "agent")
-        .not("id", "in", "(" + teamMembers.map((m) => m.id).join(",") + ")");
-
-      setAvailableAgents(agents || []);
+      if (error) throw error;
+      setTeamMembers(data?.map((d) => d.user) || []);
     } catch (error) {
-      console.error("Error:", error);
-      notifications.error("Failed to load available agents");
+      console.error("Error fetching team members:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load team members",
+        variant: "destructive",
+      });
     }
-  };
+  }, [supabase, toast, selectedTeam]);
 
-  const createTeam = async (name: string, description: string) => {
+  useEffect(() => {
+    fetchTeams();
+  }, [fetchTeams]);
+
+  useEffect(() => {
+    if (selectedTeam) {
+      fetchAvailableAgents();
+      fetchTeamMembers();
+    }
+  }, [selectedTeam, fetchAvailableAgents, fetchTeamMembers]);
+
+  const handleCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teamForm.name.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a team name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setShowDialog(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: orgData } = await supabase.auth.getSession();
+      const organizationId =
+        orgData?.session?.user?.user_metadata?.organization_id;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
+      if (!organizationId) {
+        throw new Error("No organization ID found");
+      }
 
-      if (!profile?.organization_id) return;
-
-      await supabase.from("teams").insert({
-        name,
-        description,
-        organization_id: profile.organization_id,
+      const { error } = await supabase.from("support_teams").insert({
+        team_name: teamForm.name.trim(),
+        team_description: teamForm.description.trim() || null,
+        organization_id: organizationId,
       });
 
-      notifications.success("Team created successfully");
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Team created successfully",
+        variant: "default",
+      });
+      setShowDialog(false);
+      setTeamForm({ name: "", description: "" });
+      await fetchTeams();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create team",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
+    }
+  };
+
+  const handleAddMember = async (teamId: string, agentId: string) => {
+    try {
+      const { error } = await supabase.from("team_memberships").insert({
+        team_id: teamId,
+        user_id: agentId,
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Member added successfully",
+        variant: "default",
+      });
       fetchTeams();
     } catch (error) {
-      console.error("Error:", error);
-      notifications.error("Failed to create team");
-    }
-  };
-
-  const addTeamMember = async (teamId: string, userId: string) => {
-    try {
-      await supabase.from("team_members").insert({
-        team_id: teamId,
-        user_id: userId,
+      toast({
+        title: "Error",
+        description: "Failed to add team member",
+        variant: "destructive",
       });
-
-      notifications.success("Member added successfully");
-      fetchTeamMembers(teamId);
-      fetchAvailableAgents();
-    } catch (error) {
       console.error("Error:", error);
-      notifications.error("Failed to add team member");
     }
   };
 
-  const removeTeamMember = async (teamId: string, userId: string) => {
+  const handleRemoveMember = async (teamId: string, agentId: string) => {
     try {
-      await supabase
-        .from("team_members")
+      const { error } = await supabase
+        .from("team_memberships")
         .delete()
         .eq("team_id", teamId)
-        .eq("user_id", userId);
+        .eq("user_id", agentId);
 
-      notifications.success("Member removed successfully");
-      fetchTeamMembers(teamId);
-      fetchAvailableAgents();
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Member removed successfully",
+        variant: "default",
+      });
+      fetchTeams();
     } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to remove team member",
+        variant: "destructive",
+      });
       console.error("Error:", error);
-      notifications.error("Failed to remove team member");
     }
   };
+
+  const renderTeamCard = (team: Team) => (
+    <Card key={team.team_id} className="mb-4">
+      <CardHeader>
+        <CardTitle>{team.team_name}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-gray-600 mb-2">
+          {team.team_description || "No description"}
+        </p>
+        <p className="text-sm">{team.team_memberships.length} members</p>
+        <div className="mt-4">
+          <h4 className="font-medium mb-2">Team Members</h4>
+          <ul className="space-y-2">
+            {team.team_memberships.map(({ user }) => (
+              <li
+                key={user.user_id}
+                className="flex items-center justify-between"
+              >
+                <span>{user.display_name}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveMember(team.team_id, user.user_id)}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const renderMemberTable = (members: UserProfile[], currentTeam: Team) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Name</TableHead>
+          <TableHead>Role</TableHead>
+          <TableHead>Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {members.map((member) => (
+          <TableRow key={member.user_id}>
+            <TableCell>{member.display_name}</TableCell>
+            <TableCell>{member.user_role}</TableCell>
+            <TableCell>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  handleRemoveMember(currentTeam.team_id, member.user_id)
+                }
+              >
+                Remove
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 
   if (loading) {
     return (
@@ -241,24 +336,32 @@ export default function TeamsPage() {
                 Create a new team to organize your agents
               </DialogDescription>
             </DialogHeader>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                createTeam(
-                  formData.get("name") as string,
-                  formData.get("description") as string
-                );
-              }}
-              className="space-y-4"
-            >
+            <form onSubmit={handleCreateTeam} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Team Name</Label>
-                <Input id="name" name="name" required />
+                <Input
+                  id="name"
+                  name="name"
+                  value={teamForm.name}
+                  onChange={(e) =>
+                    setTeamForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
-                <Input id="description" name="description" />
+                <Input
+                  id="description"
+                  name="description"
+                  value={teamForm.description}
+                  onChange={(e) =>
+                    setTeamForm((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
+                />
               </div>
               <DialogFooter>
                 <Button type="submit">Create Team</Button>
@@ -269,30 +372,14 @@ export default function TeamsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {teams.map((team) => (
-          <Card
-            key={team.id}
-            className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => setSelectedTeam(team)}
-          >
-            <CardHeader>
-              <CardTitle>{team.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-2">
-                {team.description}
-              </p>
-              <p className="text-sm">{team.member_count} members</p>
-            </CardContent>
-          </Card>
-        ))}
+        {teams.map((team) => renderTeamCard(team))}
       </div>
 
       {selectedTeam && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>{selectedTeam.name} Members</CardTitle>
+              <CardTitle>{selectedTeam.team_name} Members</CardTitle>
               <Dialog>
                 <DialogTrigger asChild>
                   <Button>Add Member</Button>
@@ -300,75 +387,39 @@ export default function TeamsPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Add Team Member</DialogTitle>
-                    <DialogDescription>
-                      Add an agent to this team
-                    </DialogDescription>
                   </DialogHeader>
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
                       const formData = new FormData(e.currentTarget);
-                      addTeamMember(
-                        selectedTeam.id,
+                      handleAddMember(
+                        selectedTeam.team_id,
                         formData.get("agent_id") as string
                       );
                     }}
-                    className="space-y-4"
                   >
-                    <div className="space-y-2">
-                      <Label htmlFor="agent_id">Select Agent</Label>
-                      <Select name="agent_id" required>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select an agent" />
-                        </SelectTrigger>
-                        <SelectContent>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="agent_id">Select Agent</Label>
+                        <Select name="agent_id" required>
                           {availableAgents.map((agent) => (
-                            <SelectItem key={agent.id} value={agent.id}>
-                              {agent.full_name}
-                            </SelectItem>
+                            <option key={agent.user_id} value={agent.user_id}>
+                              {agent.display_name}
+                            </option>
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </Select>
+                      </div>
+                      <DialogFooter>
+                        <Button type="submit">Add Member</Button>
+                      </DialogFooter>
                     </div>
-                    <DialogFooter>
-                      <Button type="submit">Add Member</Button>
-                    </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teamMembers.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell>{member.full_name}</TableCell>
-                    <TableCell>{member.email}</TableCell>
-                    <TableCell>{member.role}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() =>
-                          removeTeamMember(selectedTeam.id, member.id)
-                        }
-                      >
-                        Remove
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {renderMemberTable(teamMembers, selectedTeam)}
           </CardContent>
         </Card>
       )}

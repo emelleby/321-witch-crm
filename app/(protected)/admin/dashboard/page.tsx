@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/utils/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { notifications } from "@/utils/notifications";
-import { useRouter } from "next/navigation";
 import {
-  Users,
+  BookOpen,
   Building2,
   MessageSquare,
   Ticket,
-  BookOpen,
+  Users,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
 type Stats = {
   totalAgents: number;
@@ -23,14 +24,15 @@ type Stats = {
   totalArticles: number;
   ticketsByStatus: {
     open: number;
-    pending: number;
+    waiting_on_customer: number;
     closed: number;
   };
 };
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats>({
     totalAgents: 0,
     totalCustomers: 0,
@@ -40,116 +42,81 @@ export default function AdminDashboard() {
     totalArticles: 0,
     ticketsByStatus: {
       open: 0,
-      pending: 0,
+      waiting_on_customer: 0,
       closed: 0,
     },
   });
-  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  const fetchStats = async () => {
+  const fetchDashboardStats = useCallback(async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      setLoading(true);
+      const { data: tickets, error: ticketsError } = await supabase
+        .from("support_tickets")
+        .select("ticket_status");
 
-      // Get user's organization
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
+      if (ticketsError) throw ticketsError;
 
-      if (!profile?.organization_id) return;
+      // Update ticket counts
+      const statusCounts = tickets.reduce((acc, ticket) => {
+        acc[ticket.ticket_status] = (acc[ticket.ticket_status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
 
-      // Get counts
-      const [
-        { count: agentsCount },
-        { count: customersCount },
-        { count: organizationsCount },
-        { count: ticketsCount },
-        { count: messagesCount },
-        { count: articlesCount },
-        { data: ticketStatusCounts },
-      ] = await Promise.all([
-        // Count agents
-        supabase
-          .from("profiles")
-          .select("*", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id)
-          .eq("role", "agent"),
+      setStats((prevStats) => ({
+        ...prevStats,
+        ticketsByStatus: {
+          open: statusCounts.open || 0,
+          waiting_on_customer: statusCounts.waiting_on_customer || 0,
+          closed: statusCounts.closed || 0,
+        },
+      }));
 
-        // Count customers
-        supabase
-          .from("profiles")
-          .select("*", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id)
-          .eq("role", "customer"),
+      // Fetch other stats...
+      const { data: agents } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_role", "agent");
 
-        // Count organizations
-        supabase
-          .from("organizations")
-          .select("*", { count: "exact", head: true }),
+      const { data: customers } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_role", "customer");
 
-        // Count tickets
-        supabase
-          .from("tickets")
-          .select("*", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id),
+      const { data: messages } = await supabase
+        .from("ticket_messages")
+        .select("*");
 
-        // Count messages
-        supabase
-          .from("ticket_messages")
-          .select("*", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id),
+      const { data: articles } = await supabase
+        .from("knowledge_articles")
+        .select("*");
 
-        // Count knowledge base articles
-        supabase
-          .from("knowledge_base")
-          .select("*", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id),
-
-        // Get ticket status counts
-        supabase
-          .from("tickets")
-          .select("status")
-          .eq("organization_id", profile.organization_id),
-      ]);
-
-      // Calculate ticket status counts
-      const ticketsByStatus = {
-        open: 0,
-        pending: 0,
-        closed: 0,
-      };
-      ticketStatusCounts?.forEach((ticket) => {
-        ticketsByStatus[ticket.status as keyof typeof ticketsByStatus]++;
-      });
-
-      setStats({
-        totalAgents: agentsCount || 0,
-        totalCustomers: customersCount || 0,
-        totalOrganizations: organizationsCount || 0,
-        totalTickets: ticketsCount || 0,
-        totalMessages: messagesCount || 0,
-        totalArticles: articlesCount || 0,
-        ticketsByStatus,
-      });
+      setStats((prevStats) => ({
+        ...prevStats,
+        totalAgents: agents?.length || 0,
+        totalCustomers: customers?.length || 0,
+        totalMessages: messages?.length || 0,
+        totalArticles: articles?.length || 0,
+      }));
     } catch (error) {
-      console.error("Error:", error);
-      notifications.error("Failed to load dashboard stats");
+      console.error("Error fetching dashboard stats:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch dashboard statistics",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, toast]);
 
   useEffect(() => {
-    // Initial fetch
-    fetchStats();
+    fetchDashboardStats();
 
     // Set up real-time subscriptions
     const ticketsChannel = supabase.channel("tickets-changes");
     const messagesChannel = supabase.channel("messages-changes");
+    const profilesChannel = supabase.channel("profiles-changes");
 
     // Subscribe to ticket changes
     ticketsChannel
@@ -158,11 +125,11 @@ export default function AdminDashboard() {
         {
           event: "*",
           schema: "public",
-          table: "tickets",
+          table: "support_tickets",
         },
         () => {
           console.log("Ticket change detected");
-          fetchStats();
+          fetchDashboardStats();
         }
       )
       .subscribe((status) => {
@@ -180,19 +147,38 @@ export default function AdminDashboard() {
         },
         () => {
           console.log("Message change detected");
-          fetchStats();
+          fetchDashboardStats();
         }
       )
       .subscribe((status) => {
         console.log("Message subscription status:", status);
       });
 
+    // Subscribe to user profile changes
+    profilesChannel
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_profiles",
+        },
+        () => {
+          console.log("Profile change detected");
+          fetchDashboardStats();
+        }
+      )
+      .subscribe((status) => {
+        console.log("Profile subscription status:", status);
+      });
+
     // Cleanup subscriptions on unmount
     return () => {
       ticketsChannel.unsubscribe();
       messagesChannel.unsubscribe();
+      profilesChannel.unsubscribe();
     };
-  }, []); // Remove router from dependencies since we're not using router.refresh()
+  }, [supabase, fetchDashboardStats]);
 
   const stats_cards = [
     {
@@ -205,12 +191,6 @@ export default function AdminDashboard() {
       title: "Total Customers",
       value: stats.totalCustomers,
       icon: Users,
-    },
-    {
-      title: "Total Organizations",
-      value: stats.totalOrganizations,
-      icon: Building2,
-      onClick: () => router.push("/admin/organizations"),
     },
     {
       title: "Total Tickets",
@@ -232,19 +212,15 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex h-full items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Overview of your support system</p>
-      </div>
-
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {stats_cards.map((stat, i) => (
           <Card
@@ -297,9 +273,9 @@ export default function AdminDashboard() {
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span>Pending</span>
+                  <span>Waiting on Customer</span>
                   <span className="font-medium">
-                    {stats.ticketsByStatus.pending}
+                    {stats.ticketsByStatus.waiting_on_customer}
                   </span>
                 </div>
                 <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -307,7 +283,8 @@ export default function AdminDashboard() {
                     className="h-full bg-yellow-500"
                     style={{
                       width: `${
-                        (stats.ticketsByStatus.pending / stats.totalTickets) *
+                        (stats.ticketsByStatus.waiting_on_customer /
+                          stats.totalTickets) *
                         100
                       }%`,
                     }}

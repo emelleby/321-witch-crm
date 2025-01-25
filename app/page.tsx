@@ -1,11 +1,11 @@
-import Link from "next/link"
-import Image from "next/image"
-import { ArrowRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { ArrowRight } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
 
-import WitchHouseLogo from "@/public/images/Shapes 14.png"
-import LoginIcon from "@/public/images/Shapes 2.png"
-import RegisterIcon from "@/public/images/shape-47.png"
+import { Button } from "@/components/ui/button";
+import RegisterIcon from "@/public/images/shape-47.png";
+import LoginIcon from "@/public/images/Shapes 2.png";
+import WitchHouseLogo from "@/public/images/Shapes 14.png";
 
 export default function Home() {
   return (
@@ -22,7 +22,9 @@ export default function Home() {
               className="h-7 w-7"
             />
           </div>
-          <span className="text-xl font-semibold tracking-tight">Witch House</span>
+          <span className="text-xl font-semibold tracking-tight">
+            Witch House
+          </span>
         </Link>
 
         <div className="flex items-center gap-2">
@@ -61,8 +63,8 @@ export default function Home() {
               Customer Support Made Simple
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Streamline your customer support with our powerful help desk solution.
-              Start managing tickets efficiently today.
+              Streamline your customer support with our powerful help desk
+              solution. Start managing tickets efficiently today.
             </p>
             <div className="flex gap-3 pt-4">
               <Button size="lg" className="h-11" asChild>
@@ -91,5 +93,5 @@ export default function Home() {
         </div>
       </div>
     </div>
-  )
+  );
 }

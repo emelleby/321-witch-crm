@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
-import { notifications } from "@/utils/notifications";
 import {
   Select,
   SelectContent,
@@ -14,17 +12,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
 type Article = {
   id: string;
   title: string;
   content: string;
-  category: string | null;
-  tags: string[] | null;
-  views_count: number;
-  created_at: string;
-  updated_at: string;
+  type: 'article' | 'faq';
   organization_id: string;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
 type Organization = {
@@ -34,7 +32,7 @@ type Organization = {
 
 export default function KnowledgeBasePage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
   const [articles, setArticles] = useState<Article[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,16 +40,9 @@ export default function KnowledgeBasePage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [organizationFilter, setOrganizationFilter] = useState<string>("all");
   const [categories, setCategories] = useState<string[]>([]);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    fetchOrganizations();
-  }, []);
-
-  useEffect(() => {
-    fetchArticles();
-  }, [searchQuery, categoryFilter, organizationFilter]);
-
-  const fetchOrganizations = async () => {
+  const fetchOrganizations = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("organizations")
@@ -63,52 +54,74 @@ export default function KnowledgeBasePage() {
     } catch (error) {
       console.error("Error fetching organizations:", error);
     }
-  };
+  }, [supabase]);
 
-  const fetchArticles = async () => {
+  const fetchArticles = useCallback(async () => {
     try {
-      let query = supabase
-        .from("knowledge_base")
-        .select("*")
-        .order("views_count", { ascending: false });
+      const [articlesResult, faqsResult] = await Promise.all([
+        supabase
+          .from("knowledge_articles")
+          .select("*")
+          .eq("is_published", true)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("knowledge_faqs")
+          .select("*")
+          .eq("is_published", true)
+          .order("created_at", { ascending: false })
+      ]);
 
-      if (organizationFilter !== "all") {
-        query = query.eq("organization_id", organizationFilter);
-      }
+      if (articlesResult.error) throw articlesResult.error;
+      if (faqsResult.error) throw faqsResult.error;
 
-      if (searchQuery) {
-        query = query.or(
-          "title.ilike.%" +
-            searchQuery +
-            "%,content.ilike.%" +
-            searchQuery +
-            "%"
-        );
-      }
+      const combinedData = [
+        ...(articlesResult.data?.map(article => ({
+          id: article.article_id,
+          title: article.title,
+          content: article.content,
+          type: 'article' as const,
+          organization_id: article.organization_id,
+          created_at: article.created_at,
+          updated_at: article.updated_at
+        })) || []),
+        ...(faqsResult.data?.map(faq => ({
+          id: faq.faq_id,
+          title: faq.question,
+          content: faq.answer,
+          type: 'faq' as const,
+          organization_id: faq.organization_id,
+          created_at: faq.created_at,
+          updated_at: faq.updated_at
+        })) || [])
+      ].filter(item => 
+        organizationFilter === "all" || item.organization_id === organizationFilter
+      ).filter(item =>
+        !searchQuery || 
+        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.content.toLowerCase().includes(searchQuery.toLowerCase())
+      );
 
-      if (categoryFilter !== "all") {
-        query = query.eq("category", categoryFilter);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setArticles(data);
-
-      // Get unique categories from filtered articles
-      const uniqueCategories = Array.from(
-        new Set(
-          data.map((article) => article.category).filter(Boolean) as string[]
-        )
-      ).sort();
-      setCategories(uniqueCategories);
+      setArticles(combinedData);
+      setCategories(Array.from(new Set(combinedData.map(item => item.type))).sort());
     } catch (error) {
       console.error("Error:", error);
-      notifications.error("Failed to load articles");
+      toast({
+        title: "Error",
+        description: "Failed to load knowledge base items",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, searchQuery, organizationFilter, toast]);
+
+  useEffect(() => {
+    fetchOrganizations();
+  }, [fetchOrganizations]);
+
+  useEffect(() => {
+    fetchArticles();
+  }, [fetchArticles]);
 
   const incrementViewCount = async (articleId: string) => {
     try {
@@ -196,9 +209,15 @@ export default function KnowledgeBasePage() {
               <div className="space-y-2">
                 <h3 className="font-semibold">{article.title}</h3>
                 <div className="flex gap-2 text-sm text-muted-foreground">
-                  {article.category && (
+                  {article.type === 'article' && (
                     <>
-                      <span>Category: {article.category}</span>
+                      <span>Type: Article</span>
+                      <span>•</span>
+                    </>
+                  )}
+                  {article.type === 'faq' && (
+                    <>
+                      <span>Type: FAQ</span>
                       <span>•</span>
                     </>
                   )}

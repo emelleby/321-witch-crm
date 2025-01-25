@@ -77,6 +77,15 @@
 
 @layer base {
   * {
+    @apply border-[hsl(var(--border))];
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer base {
+  * {
     @apply border-border;
   }
   body {

@@ -1,16 +1,31 @@
 "use client";
 
-import { TicketTemplates } from "@/components/admin/ticket-templates";
-import { PageHeader } from "@/components/page-header";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function TemplatesPage() {
   return (
-    <div className="space-y-6">
-      <PageHeader
-        heading="Ticket Templates"
-        description="Create and manage templates for common ticket types"
-      />
-      <TicketTemplates />
-    </div>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Ticket Templates</CardTitle>
+          <CardDescription>
+            This feature is coming soon. Templates will allow you to create
+            pre-defined responses and ticket structures.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
+          <p>Templates functionality is not yet implemented.</p>
+          <p>Check back later for updates.</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

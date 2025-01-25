@@ -1,16 +1,17 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/utils/supabase/client';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { notifications } from '@/utils/notifications';
-import { VersionHistory } from '@/components/article/version-history';
-import { Pencil, FileDown, FileText } from 'lucide-react';
-import { turndownService } from '@/utils/markdown';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
+import { FileDown, FileText, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+
+import { VersionHistory } from "@/components/article/version-history";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { turndownService } from "@/utils/markdown";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
 interface Article {
   id: string;
@@ -33,24 +34,29 @@ export function ArticleDetail({ id }: ArticleDetailProps) {
   const router = useRouter();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
+  const { toast } = useToast();
 
   const fetchArticle = useCallback(async () => {
     try {
       const { data: article, error } = await supabase
-        .from('knowledge_base')
-        .select('*')
-        .eq('id', id)
+        .from("knowledge_base")
+        .select("*")
+        .eq("id", id)
         .single();
 
       if (error) throw error;
       setArticle(article);
     } catch (error) {
-      notifications.error('Failed to load article');
+      toast({
+        title: "Error",
+        description: "Failed to load article",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
-  }, [id, supabase]);
+  }, [id, supabase, toast]);
 
   useEffect(() => {
     fetchArticle();
@@ -60,7 +66,7 @@ export function ArticleDetail({ id }: ArticleDetailProps) {
     async (version: Record<string, unknown>) => {
       try {
         const { error } = await supabase
-          .from('knowledge_base')
+          .from("knowledge_base")
           .update({
             title: version.title,
             content: version.content,
@@ -68,68 +74,104 @@ export function ArticleDetail({ id }: ArticleDetailProps) {
             tags: version.tags,
             file_ids: version.file_ids,
           })
-          .eq('id', id);
+          .eq("id", id);
 
         if (error) throw error;
 
-        notifications.success('Article restored successfully');
+        toast({
+          title: "Success",
+          description: "Article restored successfully",
+          variant: "default",
+        });
         await fetchArticle();
       } catch (error) {
-        notifications.error('Failed to restore article');
+        toast({
+          title: "Error",
+          description: "Failed to restore article",
+          variant: "destructive",
+        });
       }
     },
-    [fetchArticle, id, supabase]
+    [fetchArticle, id, supabase, toast]
   );
 
   const handleExportMarkdown = useCallback(() => {
     try {
       if (!article) {
-        notifications.error('No article to export');
+        toast({
+          title: "Error",
+          description: "No article to export",
+          variant: "destructive",
+        });
         return;
       }
       const markdown = turndownService.turndown(article.content);
-      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const blob = new Blob([markdown], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = article.title + '.md';
+      a.download = article.title + ".md";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      notifications.success('Article exported as Markdown');
+      toast({
+        title: "Success",
+        description: "Article exported as Markdown",
+        variant: "default",
+      });
     } catch (error) {
-      notifications.error('Failed to export as Markdown');
+      toast({
+        title: "Error",
+        description: "Failed to export as Markdown",
+        variant: "destructive",
+      });
     }
-  }, [article]);
+  }, [article, toast]);
 
   const handleExportPDF = useCallback(async () => {
     try {
       if (!article) {
-        notifications.error('No article to export');
+        toast({
+          title: "Error",
+          description: "No article to export",
+          variant: "destructive",
+        });
         return;
       }
-      const content = document.querySelector('.prose');
+      const content = document.querySelector(".prose");
       if (!content) {
-        notifications.error('Content not found');
+        toast({
+          title: "Error",
+          description: "Content not found",
+          variant: "destructive",
+        });
         return;
       }
 
       const canvas = await html2canvas(content as HTMLElement);
       const pdf = new jsPDF();
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL("image/png");
       const imgProps = pdf.getImageProperties(imgData);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(article.title + '.pdf');
-      notifications.success('Article exported as PDF');
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save(article.title + ".pdf");
+      toast({
+        title: "Success",
+        description: "Article exported as PDF",
+        variant: "default",
+      });
     } catch (error) {
-      notifications.error('Failed to export as PDF');
+      toast({
+        title: "Error",
+        description: "Failed to export as PDF",
+        variant: "destructive",
+      });
     }
-  }, [article]);
+  }, [article, toast]);
 
   if (loading) {
     return (
@@ -175,7 +217,9 @@ export function ArticleDetail({ id }: ArticleDetailProps) {
             currentFileIds={article.file_ids}
             onRestore={handleRestore}
           />
-          <Button onClick={() => router.push('/admin/knowledge/edit/' + article.id)}>
+          <Button
+            onClick={() => router.push("/admin/knowledge/edit/" + article.id)}
+          >
             <Pencil className="mr-2 h-4 w-4" />
             Edit Article
           </Button>

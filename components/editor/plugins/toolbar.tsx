@@ -1,35 +1,33 @@
 "use client";
 
+import { $createListNode, $isListNode } from "@lexical/list";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { useCallback, useEffect, useState } from "react";
-import { ImageNode, $createImageNode } from "../nodes/image-node";
-import {
-  $getSelection,
-  $isRangeSelection,
-  FORMAT_TEXT_COMMAND,
-  SELECTION_CHANGE_COMMAND,
-  $getNodeByKey,
-  $createParagraphNode,
-} from "lexical";
-import { $setBlocksType } from "@lexical/selection";
 import {
   $createHeadingNode,
   $createQuoteNode,
-  HeadingTagType,
   $isHeadingNode,
+  HeadingTagType,
 } from "@lexical/rich-text";
-import { $createListNode, ListNode, $isListNode } from "@lexical/list";
-import { Button } from "@/components/ui/button";
+import { $setBlocksType } from "@lexical/selection";
+import {
+  $createParagraphNode,
+  $getSelection,
+  $isRangeSelection,
+  FORMAT_TEXT_COMMAND,
+} from "lexical";
 import {
   Bold,
+  Image as ImageIcon,
   Italic,
-  Underline,
-  Strikethrough,
   List,
   ListOrdered,
   Quote,
-  Image as ImageIcon,
+  Strikethrough,
+  Underline,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -38,16 +36,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
+
+import { $createImageNode } from "../nodes/image-node";
 import { CodePlugin } from "./code";
-import { TablePlugin } from "./table";
-import { createClient } from "@/utils/supabase/client";
-import { notifications } from "@/utils/notifications";
 import { PreviewPlugin } from "./preview";
+import { TablePlugin } from "./table";
 
 export function ToolbarPlugin() {
   const [editor] = useLexicalComposerContext();
   const [isUploading, setIsUploading] = useState(false);
   const [blockType, setBlockType] = useState<string>("paragraph");
+  const { toast } = useToast();
 
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
@@ -146,11 +147,13 @@ export function ToolbarPlugin() {
 
       try {
         setIsUploading(true);
-        const supabase = createClient();
+        const supabase = createBrowserSupabaseClient();
 
         // Upload to Supabase Storage
         const fileExt = file.name.split(".").pop();
-        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const fileName = `${Math.random()
+          .toString(36)
+          .substring(2)}.${fileExt}`;
         const { data, error } = await supabase.storage
           .from("attachments")
           .upload(fileName, file);
@@ -176,7 +179,11 @@ export function ToolbarPlugin() {
         });
       } catch (error) {
         console.error("Error uploading image:", error);
-        notifications.error("Failed to upload image");
+        toast({
+          title: "Upload Error",
+          description: "Failed to upload image",
+          variant: "destructive",
+        });
       } finally {
         setIsUploading(false);
       }

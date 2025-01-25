@@ -1,91 +1,111 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
-import { Card } from '@/components/ui/card';
-import { PageHeader } from '@/components/page-header';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { notifications } from '@/utils/notifications';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { FileUpload } from '@/components/file-upload';
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
-type Profile = {
-  id: string;
-  full_name: string;
-  avatar_url: string | null;
-  email: string;
-  role: string;
-};
+import { FileUpload } from "@/components/file-upload";
+import { PageHeader } from "@/components/page-header";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
+
+type Profile = Database["public"]["Tables"]["user_profiles"]["Row"];
 
 export default function AgentProfilePage() {
+  const router = useRouter();
+  const supabase = createBrowserSupabaseClient();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newProfilePictureId, setNewProfilePictureId] = useState<string | null>(null);
-  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
-  const supabase = createClient();
+  const [newName, setNewName] = useState("");
+  const [newProfilePictureId, setNewProfilePictureId] = useState<string | null>(
+    null
+  );
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(
+    null
+  );
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
+    try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", user.id)
         .single();
 
-      if (profile) {
-        setProfile(profile);
-        setNewName(profile.full_name);
-        if (profile.avatar_url) {
-          const {
-            data: { publicUrl },
-          } = supabase.storage.from('avatars').getPublicUrl(profile.avatar_url);
-          setProfilePictureUrl(publicUrl);
-        }
+      if (error) throw error;
+      setProfile(data);
+      setNewName(data.display_name);
+      if (data.avatar_file_id) {
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("avatars").getPublicUrl(data.avatar_file_id);
+        setProfilePictureUrl(publicUrl);
       }
-
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
       setLoading(false);
-    };
+    }
+  }, [supabase]);
 
+  useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [fetchProfile]);
 
-  const handleSave = async () => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (!profile) return;
 
+    setSaving(true);
     try {
-      const updates: { full_name: string; avatar_url?: string } = {
-        full_name: newName,
+      const updates: Partial<Profile> = {
+        display_name: newName,
+        avatar_file_id: newProfilePictureId || profile.avatar_file_id,
       };
 
-      if (newProfilePictureId) {
-        updates.avatar_url = newProfilePictureId;
-      }
-
-      const { error } = await supabase.from('profiles').update(updates).eq('id', profile.id);
+      const { error } = await supabase
+        .from("user_profiles")
+        .update(updates)
+        .eq("user_id", profile.user_id);
 
       if (error) throw error;
 
-      setProfile({ ...profile, ...updates });
+      setProfile((prev) => (prev ? { ...prev, ...updates } : null));
       setEditing(false);
-      notifications.success('Profile updated successfully');
+      toast({
+        title: "Success",
+        description: "Profile updated successfully",
+        variant: "default",
+      });
 
       if (newProfilePictureId) {
         const {
           data: { publicUrl },
-        } = supabase.storage.from('avatars').getPublicUrl(newProfilePictureId);
+        } = supabase.storage.from("avatars").getPublicUrl(newProfilePictureId);
         setProfilePictureUrl(publicUrl);
       }
     } catch (error) {
-      notifications.error('Error updating profile');
+      toast({
+        title: "Error",
+        description: "Error updating profile",
+        variant: "destructive",
+      });
+      console.error("Error:", error);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -103,26 +123,26 @@ export default function AgentProfilePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader heading="Profile" description="Manage your account settings" />
+      <PageHeader heading="Profile" text="Manage your account settings" />
 
       <Card className="p-6">
-        <div className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="flex items-center gap-6">
             <Avatar className="h-20 w-20">
               <AvatarImage src={profilePictureUrl || undefined} />
               <AvatarFallback>
-                {profile.full_name
-                  .split(' ')
+                {profile.display_name
+                  .split(" ")
                   .map((n) => n[0])
-                  .join('')
+                  .join("")
                   .toUpperCase()}
               </AvatarFallback>
             </Avatar>
             {editing && (
               <FileUpload
                 maxFiles={1}
-                allowedTypes={['image/*']}
-                onUploadComplete={(fileIds) => {
+                allowedTypes={["image/*"]}
+                onUploadCompleteAction={(fileIds) => {
                   if (fileIds.length > 0) {
                     setNewProfilePictureId(fileIds[0]);
                   }
@@ -134,35 +154,47 @@ export default function AgentProfilePage() {
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             {editing ? (
-              <Input id="name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <Input
+                id="name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
             ) : (
-              <p className="text-foreground">{profile.full_name}</p>
+              <p className="text-foreground">{profile.display_name}</p>
             )}
           </div>
 
           <div className="space-y-2">
             <Label>Email</Label>
-            <p className="text-foreground">{profile.email}</p>
+            <p className="text-foreground">{profile.user_id}</p>
           </div>
 
           <div className="space-y-2">
             <Label>Role</Label>
-            <p className="capitalize text-foreground">{profile.role}</p>
+            <p className="capitalize text-foreground">{profile.user_role}</p>
           </div>
 
           <div className="flex gap-2">
             {editing ? (
               <>
-                <Button onClick={handleSave}>Save Changes</Button>
-                <Button variant="outline" onClick={() => setEditing(false)}>
+                <Button type="submit" disabled={saving}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditing(false)}
+                >
                   Cancel
                 </Button>
               </>
             ) : (
-              <Button onClick={() => setEditing(true)}>Edit Profile</Button>
+              <Button type="button" onClick={() => setEditing(true)}>
+                Edit Profile
+              </Button>
             )}
           </div>
-        </div>
+        </form>
       </Card>
     </div>
   );
