@@ -65,4 +65,4 @@ node_modules/
 
 old_migrations/
 cursor_agent_functions/
-.rules.TEMPLATE
+brainlift.md
