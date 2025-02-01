@@ -4,8 +4,8 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import RegisterIcon from "@/public/images/shape-47.png";
-import LoginIcon from "@/public/images/Shapes 2.png";
 import WitchHouseLogo from "@/public/images/Shapes 14.png";
+import LoginIcon from "@/public/images/Shapes 2.png";
 
 export default function Home() {
   return (
@@ -17,9 +17,10 @@ export default function Home() {
             <Image
               src={WitchHouseLogo}
               alt="Witch House"
-              width={28}
-              height={28}
-              className="h-7 w-7"
+              width={40}
+              height={40}
+              className="h-[40px] w-[40px] object-contain"
+              priority
             />
           </div>
           <span className="text-xl font-semibold tracking-tight">
@@ -35,7 +36,7 @@ export default function Home() {
                 alt="Login"
                 width={18}
                 height={18}
-                className="opacity-80"
+                className="h-[18px] w-[18px] object-contain opacity-80"
               />
               <span>Login</span>
             </Button>
@@ -47,7 +48,7 @@ export default function Home() {
                 alt="Register"
                 width={18}
                 height={18}
-                className="opacity-90"
+                className="h-[18px] w-[18px] object-contain opacity-90"
               />
               <span>Register</span>
             </Button>
@@ -85,7 +86,7 @@ export default function Home() {
           <Image
             src={WitchHouseLogo}
             alt="Witch House Illustration"
-            className="absolute inset-0 h-full w-full object-cover object-center"
+            className="absolute inset-0 h-full w-full object-contain"
             priority
             width={1200}
             height={1200}

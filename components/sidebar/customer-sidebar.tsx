@@ -20,8 +20,8 @@ export function CustomerSidebar() {
     const { data: tickets } = await supabase
       .from("support_tickets")
       .select("ticket_id")
-      .eq("created_by_user_id", user.id)
-      .gt("unread_agent_messages", 0);
+      .eq("created_by_user_id", user.id);
+    // .gt("unread_agent_messages", 0);
 
     setUnreadCount(tickets?.length || 0);
   }, [supabase]);

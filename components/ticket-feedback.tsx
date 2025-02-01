@@ -29,11 +29,13 @@ export function TicketFeedback({
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.from("ticket_feedback").insert({
-        ticket_id: ticketId,
-        rating,
-        feedback: feedback.trim() || null,
-      });
+      const { error } = await supabase
+        .from("support_tickets")
+        .update({
+          customer_rating: rating,
+          customer_feedback: feedback.trim() || null,
+        })
+        .eq("ticket_id", ticketId);
 
       if (error) throw error;
 
@@ -65,28 +67,39 @@ export function TicketFeedback({
   }
 
   return (
-    <Card className="p-6 space-y-4">
-      <h3 className="font-semibold">How was your experience?</h3>
-      <div className="flex justify-center gap-2">
-        {[1, 2, 3, 4, 5].map((value) => (
-          <Button
-            key={value}
-            variant={rating === value ? "default" : "outline"}
-            className="w-12 h-12"
-            onClick={() => setRating(value)}
-          >
-            {value}
-          </Button>
-        ))}
-      </div>
-      <Textarea
-        placeholder="Additional feedback (optional)"
-        value={feedback}
-        onChange={(e) => setFeedback(e.target.value)}
-        className="min-h-[100px]"
-      />
-      <div className="flex justify-end">
-        <Button onClick={handleSubmit} disabled={!rating || submitting}>
+    <Card className="p-6">
+      <div className="space-y-4">
+        <div>
+          <h3 className="mb-2 font-semibold">Rate your experience</h3>
+          <div className="flex gap-2">
+            {[1, 2, 3, 4, 5].map((value) => (
+              <Button
+                key={value}
+                variant={rating === value ? "default" : "outline"}
+                onClick={() => setRating(value)}
+                data-testid={`rating-${value}`}
+              >
+                {value}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="mb-2 font-semibold">Additional feedback</h3>
+          <Textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="Tell us more about your experience..."
+            className="min-h-[100px]"
+            data-testid="feedback-textarea"
+          />
+        </div>
+        <Button
+          onClick={handleSubmit}
+          disabled={!rating || submitting}
+          className="w-full"
+          data-testid="submit-feedback"
+        >
           {submitting ? "Submitting..." : "Submit Feedback"}
         </Button>
       </div>

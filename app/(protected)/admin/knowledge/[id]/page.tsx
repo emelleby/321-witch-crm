@@ -1,6 +1,6 @@
-import { Suspense } from 'react';
+import { Suspense } from "react";
 
-import { ArticleDetail } from '@/components/article/article-detail';
+import { ArticleDetail } from "@/components/article/article-detail";
 
 interface Params {
   id: string;
@@ -23,7 +23,7 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
         </div>
       }
     >
-      <ArticleDetail id={id} />
+      <ArticleDetail articleId={id} />
     </Suspense>
   );
 }

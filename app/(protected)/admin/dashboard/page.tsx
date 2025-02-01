@@ -1,103 +1,76 @@
 "use client";
 
-import {
-  BookOpen,
-  Building2,
-  MessageSquare,
-  Ticket,
-  Users,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
+import { TagCategoryManagement } from "@/components/admin/tag-category-management";
+import { TeamManagement } from "@/components/admin/team-management";
+import { TicketReviewQueue } from "@/components/admin/ticket-review-queue";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 import { useCallback, useEffect, useState } from "react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
-import { createBrowserSupabaseClient } from "@/utils/supabase/client";
-
-type Stats = {
-  totalAgents: number;
-  totalCustomers: number;
-  totalOrganizations: number;
-  totalTickets: number;
-  totalMessages: number;
-  totalArticles: number;
-  ticketsByStatus: {
-    open: number;
-    waiting_on_customer: number;
-    closed: number;
-  };
+type DashboardStats = {
+  ticketsNeedingReview: number;
+  orphanedTickets: number;
+  errorQueue: number;
+  activeTeams: number;
 };
 
-export default function AdminDashboard() {
-  const router = useRouter();
-  const supabase = createBrowserSupabaseClient();
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<Stats>({
-    totalAgents: 0,
-    totalCustomers: 0,
-    totalOrganizations: 0,
-    totalTickets: 0,
-    totalMessages: 0,
-    totalArticles: 0,
-    ticketsByStatus: {
-      open: 0,
-      waiting_on_customer: 0,
-      closed: 0,
-    },
+export default function AdminDashboardPage() {
+  const [stats, setStats] = useState<DashboardStats>({
+    ticketsNeedingReview: 0,
+    orphanedTickets: 0,
+    errorQueue: 0,
+    activeTeams: 0,
   });
+  const [loading, setLoading] = useState(true);
+  const supabase = createBrowserSupabaseClient();
   const { toast } = useToast();
 
   const fetchDashboardStats = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: tickets, error: ticketsError } = await supabase
+
+      // Fetch tickets needing review (unassigned tickets)
+      const { data: reviewTickets, error: reviewError } = await supabase
         .from("support_tickets")
-        .select("ticket_status");
+        .select("ticket_id")
+        .is("assigned_to_user_id", null)
+        .is("assigned_to_team_id", null);
 
-      if (ticketsError) throw ticketsError;
+      if (reviewError) throw reviewError;
 
-      // Update ticket counts
-      const statusCounts = tickets.reduce((acc, ticket) => {
-        acc[ticket.ticket_status] = (acc[ticket.ticket_status] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      // Fetch orphaned tickets (assigned to inactive agents)
+      const { data: orphanedTickets, error: orphanedError } = await supabase
+        .from("support_tickets")
+        .select("ticket_id, assigned_to_user_id")
+        .not("assigned_to_user_id", "is", null)
+        .not("ticket_status", "eq", "closed");
 
-      setStats((prevStats) => ({
-        ...prevStats,
-        ticketsByStatus: {
-          open: statusCounts.open || 0,
-          waiting_on_customer: statusCounts.waiting_on_customer || 0,
-          closed: statusCounts.closed || 0,
-        },
-      }));
+      if (orphanedError) throw orphanedError;
 
-      // Fetch other stats...
-      const { data: agents } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_role", "agent");
+      // Fetch error queue tickets
+      const { data: errorTickets, error: errorQueueError } = await supabase
+        .from("support_tickets")
+        .select("ticket_id")
+        .eq("has_error", true);
 
-      const { data: customers } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_role", "customer");
+      if (errorQueueError) throw errorQueueError;
 
-      const { data: messages } = await supabase
-        .from("ticket_messages")
-        .select("*");
+      // Fetch active teams
+      const { data: teams, error: teamsError } = await supabase
+        .from("support_teams")
+        .select("team_id")
+        .eq("is_active", true);
 
-      const { data: articles } = await supabase
-        .from("knowledge_articles")
-        .select("*");
+      if (teamsError) throw teamsError;
 
-      setStats((prevStats) => ({
-        ...prevStats,
-        totalAgents: agents?.length || 0,
-        totalCustomers: customers?.length || 0,
-        totalMessages: messages?.length || 0,
-        totalArticles: articles?.length || 0,
-      }));
+      setStats({
+        ticketsNeedingReview: reviewTickets?.length || 0,
+        orphanedTickets: orphanedTickets?.length || 0,
+        errorQueue: errorTickets?.length || 0,
+        activeTeams: teams?.length || 0,
+      });
     } catch (error) {
       console.error("Error fetching dashboard stats:", error);
       toast({
@@ -113,13 +86,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchDashboardStats();
 
-    // Set up real-time subscriptions
-    const ticketsChannel = supabase.channel("tickets-changes");
-    const messagesChannel = supabase.channel("messages-changes");
-    const profilesChannel = supabase.channel("profiles-changes");
-
-    // Subscribe to ticket changes
-    ticketsChannel
+    // Set up real-time subscriptions for tickets and teams
+    const ticketsChannel = supabase
+      .channel("tickets_changes")
       .on(
         "postgres_changes",
         {
@@ -128,87 +97,31 @@ export default function AdminDashboard() {
           table: "support_tickets",
         },
         () => {
-          console.log("Ticket change detected");
           fetchDashboardStats();
         }
       )
-      .subscribe((status) => {
-        console.log("Ticket subscription status:", status);
-      });
+      .subscribe();
 
-    // Subscribe to message changes
-    messagesChannel
+    const teamsChannel = supabase
+      .channel("teams_changes")
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "ticket_messages",
+          table: "support_teams",
         },
         () => {
-          console.log("Message change detected");
           fetchDashboardStats();
         }
       )
-      .subscribe((status) => {
-        console.log("Message subscription status:", status);
-      });
+      .subscribe();
 
-    // Subscribe to user profile changes
-    profilesChannel
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "user_profiles",
-        },
-        () => {
-          console.log("Profile change detected");
-          fetchDashboardStats();
-        }
-      )
-      .subscribe((status) => {
-        console.log("Profile subscription status:", status);
-      });
-
-    // Cleanup subscriptions on unmount
     return () => {
-      ticketsChannel.unsubscribe();
-      messagesChannel.unsubscribe();
-      profilesChannel.unsubscribe();
+      supabase.removeChannel(ticketsChannel);
+      supabase.removeChannel(teamsChannel);
     };
   }, [supabase, fetchDashboardStats]);
-
-  const stats_cards = [
-    {
-      title: "Total Agents",
-      value: stats.totalAgents,
-      icon: Users,
-      onClick: () => router.push("/admin/agents"),
-    },
-    {
-      title: "Total Customers",
-      value: stats.totalCustomers,
-      icon: Users,
-    },
-    {
-      title: "Total Tickets",
-      value: stats.totalTickets,
-      icon: Ticket,
-    },
-    {
-      title: "Total Messages",
-      value: stats.totalMessages,
-      icon: MessageSquare,
-    },
-    {
-      title: "Knowledge Base Articles",
-      value: stats.totalArticles,
-      icon: BookOpen,
-      onClick: () => router.push("/admin/knowledge"),
-    },
-  ];
 
   if (loading) {
     return (
@@ -219,101 +132,86 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {stats_cards.map((stat, i) => (
-          <Card
-            key={i}
-            className={cn(
-              "hover:shadow-lg transition-shadow",
-              stat.onClick && "cursor-pointer"
-            )}
-            onClick={stat.onClick}
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {stat.title}
-              </CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="container py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Tickets by Status
+              Tickets Needing Review
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Open</span>
-                  <span className="font-medium">
-                    {stats.ticketsByStatus.open}
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500"
-                    style={{
-                      width: `${
-                        (stats.ticketsByStatus.open / stats.totalTickets) * 100
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Waiting on Customer</span>
-                  <span className="font-medium">
-                    {stats.ticketsByStatus.waiting_on_customer}
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full bg-yellow-500"
-                    style={{
-                      width: `${
-                        (stats.ticketsByStatus.waiting_on_customer /
-                          stats.totalTickets) *
-                        100
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Closed</span>
-                  <span className="font-medium">
-                    {stats.ticketsByStatus.closed}
-                  </span>
-                </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full bg-green-500"
-                    style={{
-                      width: `${
-                        (stats.ticketsByStatus.closed / stats.totalTickets) *
-                        100
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
+            <div className="text-2xl font-bold">
+              {stats.ticketsNeedingReview}
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Orphaned Tickets
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.orphanedTickets}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Error Queue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.errorQueue}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Teams</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.activeTeams}</div>
+          </CardContent>
+        </Card>
       </div>
+
+      <Tabs defaultValue="review" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="review">Review Queue</TabsTrigger>
+          <TabsTrigger value="teams">Team Management</TabsTrigger>
+          <TabsTrigger value="tags">Tags & Categories</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="review">
+          <TicketReviewQueue />
+        </TabsContent>
+
+        <TabsContent value="teams">
+          <TeamManagement />
+        </TabsContent>
+
+        <TabsContent value="tags">
+          <TagCategoryManagement />
+        </TabsContent>
+
+        <TabsContent value="settings">
+          <Card>
+            <CardHeader>
+              <CardTitle>System Settings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p>Settings interface coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

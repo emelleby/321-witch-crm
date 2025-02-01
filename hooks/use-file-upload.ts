@@ -1,11 +1,11 @@
-import { useState } from "react";
 import { createBrowserSupabaseClient } from "@/utils/supabase/client";
-import { Database } from "@/database.types";
+import { useState } from "react";
 
 interface FileUploadOptions {
   bucketName?: string;
   maxSizeMB?: number;
   allowedTypes?: string[];
+  organizationId?: string;
 }
 
 // Define supported file types based on Unstructured API
@@ -55,6 +55,10 @@ export function useFileUpload(options: FileUploadOptions = {}) {
     try {
       setUploading(true);
 
+      if (!options.organizationId) {
+        throw new Error("organizationId is required");
+      }
+
       // Validate file size
       if (file.size > maxSizeMB * 1024 * 1024) {
         throw new Error(`File size must be less than ${maxSizeMB}MB`);
@@ -94,6 +98,7 @@ export function useFileUpload(options: FileUploadOptions = {}) {
           file_type: file.type,
           file_size: file.size,
           storage_path: filePath,
+          organization_id: options.organizationId,
         })
         .select()
         .single();

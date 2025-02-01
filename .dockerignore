@@ -30,4 +30,26 @@ yarn-error.log*
 *.swp
 *.swo 
 
-.env.test
+# Testing and Development
+tests/
+test-results/
+playwright-report/
+cursor_agent_functions/
+.cache_ggshield
+.cursorignore
+.cursorrules
+.rules.TEMPLATE
+.sqlfluff
+Dockerfile.dev
+InfoForFrontend.md
+TODO.md
+brainlift.md
+frontend-zendesk.code-workspace
+playwright.config.ts
+vitest.config.mts
+summary_for_llm.md
+
+# Documentation
+docs/
+
+.env*

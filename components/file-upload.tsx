@@ -78,6 +78,24 @@ export function FileUpload({
       const uploadedFileIds: string[] = [];
 
       try {
+        // Get user's organization_id
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error("User not authenticated");
+        }
+
+        const { data: userProfile, error: profileError } = await supabase
+          .from("user_profiles")
+          .select("organization_id")
+          .eq("user_id", user.id)
+          .single();
+
+        if (profileError || !userProfile?.organization_id) {
+          throw new Error("Failed to get organization information");
+        }
+
         for (let i = 0; i < selectedFiles.length; i++) {
           const file = selectedFiles[i];
 
@@ -115,6 +133,8 @@ export function FileUpload({
               file_type: file.type,
               storage_path: filePath,
               file_size: file.size,
+              organization_id: userProfile.organization_id,
+              uploaded_by_user_id: user.id,
             })
             .select()
             .single();

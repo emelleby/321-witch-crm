@@ -1,231 +1,279 @@
-%% Main Entry Points
 graph TD
-    NewTicket[New Support Ticket] --> InitCheck
-    NewDoc[New Knowledge Document] --> DocProcess
-    NewChat[New Chat Session] --> ChatStart
 
-%% Pre-Processing Subgraph
-subgraph PreProcess["Pre-Processing"]
-    InitCheck[Initial Processing] --> SplitContent[Split Content & Attachments]
-    
-    %% Content Processing Branch
-    SplitContent --> Moderate[Content Moderation]
-    Moderate --> ModCheck{Content Safe?}
-    ModCheck -->|Yes| TokenCheck[Check Token Count]
-    ModCheck -->|No| AdminReview[Send to Admin Review]
-    AdminReview --> AdminDecision{Admin Decision}
-    AdminDecision -->|Approve| TokenCheck
-    AdminDecision -->|Reject| RejectTicket[Reject & Notify]
-    TokenCheck --> ChunkerEntry[Enter Chunker Flow]
-    
-    %% File Processing Branch
-    SplitContent --> FileCheck{Has Attachments?}
-    FileCheck -->|No| SkipFiles[Skip File Processing]
-    FileCheck -->|Yes| FileType{File Type?}
-    
-    %% Image Processing
-    FileType -->|Image| GPTVision[Process with GPT-4 Vision]
-    GPTVision --> AnalyzeImage[Analyze Image with Ticket Context]
-    AnalyzeImage --> ExtractImageContext[Extract Relevant Details]
-    GPTVision -->|Error| ImgError[Log Image Error]
-    ImgError --> NotifyAdmin[Notify Admin]
-    ImgError --> SkipFile[Skip Problem File]
-    
-    %% Document Processing
-    FileType -->|Document| DocType{Document Type}
-    DocType -->|PDF/Word/Text| Unstructured[Process with Unstructured]
-    DocType -->|CSV/Excel| TableParser[Parse Structured Data]
-    
-    %% Document Error Handling
-    Unstructured -->|Error| DocError[Log Document Error]
-    DocError --> RetryDoc[Retry Processing]
-    RetryDoc -->|Success| Continue[Continue Processing]
-    RetryDoc -->|Fail| FallbackText[Extract Raw Text]
-    FallbackText -->|Success| Continue
-    FallbackText -->|Fail| NotifyAdmin
-    
-    %% Table Error Handling
-    TableParser -->|Error| TableError[Log Table Error]
-    TableError --> RetryTable[Retry with Different Parser]
-    RetryTable -->|Success| Continue
-    RetryTable -->|Fail| NotifyAdmin
-    
-    %% Content Token Management
-    Continue --> TokenCount[Count Tokens]
-    TokenCount --> TokenCheck{Tokens > Max?}
-    TokenCheck -->|Yes| ChunkContent[Create Content Chunks]
-    TokenCheck -->|No| ProcessWhole[Process As Is]
-    
-    ChunkContent --> StoreChunks[Store Content Chunks]
-    StoreChunks --> CreateEmbeddings[Create Chunk Embeddings]
-    CreateEmbeddings --> LinkToTicket[Link Chunks to Ticket]
-    
-    ProcessWhole --> ExtractRelevant[Extract Relevant Info]
-    ExtractRelevant --> StoreContext[Store Context]
-    
-    %% Combine Results
-    ExtractImageContext --> MergeResults[Merge All Context]
-    StoreContext --> MergeResults
-    LinkToTicket --> MergeResults
-    SkipFiles --> MergeResults
-    SkipFile --> MergeResults
-    
-    %% Final Processing
-    MergeResults --> TokenCheck
+%% ========= REGISTRATION & ORGANIZATION SETUP =========
+subgraph "RegistrationAndOrgSetup" ["Registration & Organization Setup<br>Exchange: 'registration_ex (direct)'<br>Queue: 'registration_queue'"]
+    direction TB
+
+    RegStart["User Registration Start"] --> RegCheckType{"Agent or Customer"}
+    RegCheckType -->|Customer| RegCreateCust["Create Customer Account in DB"]
+    RegCheckType -->|Agent| RegCheckDomain["Check Email Domain in DB"]
+    RegCheckDomain -->|Domain Not Found| RegCreateOrg["Create Org & Set User as Admin"]
+    RegCheckDomain -->|Domain Found| RegJoinOrg["Join Existing Org as Agent"]
+
+    RegCreateOrg --> OrgConfig["Initialize Organization Settings<br>(SLA, Branding, Categories, Tags)"]
+    RegJoinOrg --> OrgConfig
+    RegCreateCust --> RegFinish["Registration Complete"]
+    OrgConfig --> RegFinish
+    RegFinish --> RegNotify["Send Notification to Admin<br>Exchange: 'notifications_ex (fanout)'"]
+    RegFinish --> RegAudit["Create Audit Log Entry<br>(Write to DB)"]
 end
 
-%% Chunker/Summarizer Subgraph
-subgraph Chunker["Chunker/Summarizer Agent"]
-    ChunkerEntry --> Count[Count Tokens]
-    Count --> Check{Token Count <= Max?}
-    
-    %% Under Token Limit
-    Check -->|Yes| Store[Store Original Text]
-    Store --> ReturnText[Return Text]
-    
-    %% Over Token Limit
-    Check -->|No| Split[Split into Chunks]
-    Split --> ChunkLoop[Process Each Chunk]
-    ChunkLoop --> RecCheck{Chunk > Max Tokens?}
-    RecCheck -->|Yes| RecSplit[Split Chunk Further]
-    RecSplit --> ChunkLoop
-    
-    %% Summarization
-    RecCheck -->|No| Sum[Summarize Chunk]
-    Sum --> SumCheck{Summary > Max Tokens?}
-    SumCheck -->|Yes| Retry[Retry with Stricter Params]
-    Retry --> Sum
-    SumCheck -->|No| Collect[Collect Summaries]
-    Collect --> FinalSum[Create Final Summary]
-    
-    %% Metadata
-    ChunkerEntry --> Meta[Create Metadata]
-    Meta --> TrackOrig[Track Original Text]
-    TrackOrig --> TrackChunks[Track Chunk Map]
+%% ========= PRE-TICKET AI CHATBOT =========
+subgraph "ChatFlow" ["Pre-Ticket Chat<br>Exchange: 'chat_ex (topic)'<br>Queue: 'chat_queue'"]
+    direction TB
+
+    ChatStart["User Opens Chat"] --> ChatUseBranding["Load Org Branding Settings"]
+    ChatUseBranding --> ChatRAG["AI Chat with RAG + KB Articles"]
+    ChatRAG --> ChatResolved{"Issue Resolved?"}
+    ChatResolved -->|Yes| ChatEnd["End Chat<br>No Ticket Needed"]
+    ChatResolved -->|No| ChatOfferTicket["Offer to Create Ticket"]
+    ChatOfferTicket -->|Accepted| ChatGenTicket["Generate Ticket from Chat<br>Enqueue to 'ticket_preprocess_q'"]
+    ChatOfferTicket -->|Declined| ChatEnd
 end
 
-%% Router Agent Subgraph
-subgraph Router["Router Agent"]
-    ReturnText --> InitRoute[Initialize Routing]
-    
-    subgraph "Context Gathering"
-        InitRoute --> GetOrg[Get Organization Info]
-        InitRoute --> GetTeams[Get Team List]
-        InitRoute --> GetCats[Get Categories]
-        InitRoute --> GetTags[Get Tags]
-        InitRoute --> GetHist[Get Historical Tickets]
-        InitRoute --> GetSLA[Get SLA Requirements]
-        
-        GetOrg & GetTeams & GetCats & GetTags & GetHist & GetSLA --> PrepContext[Prepare Context]
-    end
-    
-    PrepContext --> AnalyzeContext[Analyze Context]
-    AnalyzeContext --> DetectIntent[Detect Intent]
-    DetectIntent --> SetPriority[Set Priority]
-    SetPriority --> SelectTeam[Select Team]
-    SelectTeam --> HasTeam{Team Available?}
-    HasTeam -->|Yes| Assign[Assign to Team]
-    HasTeam -->|No| Escalate[Escalate to Admin]
+%% ========= MAIN TICKET PREPROCESSING AGENT =========
+subgraph "TicketPreProcess" ["Ticket Preprocessing Agent<br>Exchange: 'ticket_preprocess_ex (direct)'<br>Queue: 'ticket_preprocess_q'"]
+    direction TB
+
+    TPP_Init["Initialize or Load Ticket"] --> TPP_Moderate["Moderate Text & Content"]
+    TPP_Moderate --> TPP_SafeCheck{"Content Safe?"}
+    TPP_SafeCheck -->|Yes| TPP_AttachCheck["Check Attachments?"]
+    TPP_SafeCheck -->|No| TPP_AdminReview["Admin Review - Human in Loop"]
+    TPP_AdminReview --> TPP_AdminDecision{"Approve or Reject"}
+    TPP_AdminDecision -->|Approve| TPP_AttachCheck
+    TPP_AdminDecision -->|Reject| TPP_Reject["Reject Ticket"]
+    TPP_AttachCheck -->|No| TPP_Skip["Skip File Parsing"]
+    TPP_AttachCheck -->|Yes| TPP_FileType{"File Type"}
+    TPP_FileType -->|Image| TPP_ImageLLM["Image Parsing LLM Agent"]
+    TPP_ImageLLM --> TPP_ImgAnalyze["Analyze Image"]
+    TPP_ImageLLM -->|Error| TPP_ImgErr["Log Error + Notify Admin"]
+    TPP_ImgAnalyze --> TPP_ImgExtract["Extract Image Metadata"]
+    TPP_ImgErr --> TPP_ImgSkip["Skip Problematic Image"]
+    TPP_FileType -->|Document| TPP_DocType{"Structured or Unstructured?"}
+    TPP_DocType -->|Unstructured| TPP_Unstruct["Unstructured Parser"]
+    TPP_DocType -->|Structured| TPP_TableParser["Table Parser"]
+    TPP_Unstruct -->|Error| TPP_UnErr["Error Logged"]
+    TPP_UnErr --> TPP_UnRetry["Retry or Fallback"]
+    TPP_UnRetry -->|Success| TPP_UnOK["Parsed OK"]
+    TPP_UnRetry -->|Fail| TPP_UnRaw["Fallback: Raw Text"]
+    TPP_TableParser -->|Error| TPP_TabErr["Error Logged"]
+    TPP_TabErr --> TPP_TabRetry["Retry or Fallback"]
+    TPP_TabRetry -->|Success| TPP_UnOK
+    TPP_TabRetry -->|Fail| TPP_UnRaw
+    TPP_UnOK --> TPP_Gather["Gather Parsed Data"]
+    TPP_UnRaw --> TPP_Gather
+    TPP_ImgExtract --> TPP_Gather
+    TPP_ImgSkip --> TPP_Gather
+    TPP_Skip --> TPP_Gather
+    TPP_Gather --> TPP_TokenCheck{"Check Token Length"}
+    TPP_TokenCheck -->|Over Limit| TPP_ChunkerEntry["Enqueue to 'chunker_q'"]
+    TPP_TokenCheck -->|Under Limit| TPP_Full["Keep Full Data"]
+    TPP_Full --> TPP_Done["Preprocessing Done"]
+    TPP_ChunkerEntry --> TPP_Done
+    TPP_Done --> TPP_Out["Send to Router<br>Exchange: 'router_ex (direct)'"]
 end
 
-%% Support Agent Subgraph
-subgraph Support["Support Agent"]
-    Assign --> ChatStart[Begin Chat]
-    ChatStart --> LoadContext[Load Context]
-    LoadContext --> GetKB[Get Relevant KB Articles]
-    GetKB --> GenResp[Generate Response]
-    GenResp --> QCheck{Quality Check}
-    QCheck -->|Pass| Send[Send Response]
-    QCheck -->|Fail| Review[Human Review]
-    Review --> HumanKB[Load KB for Human]
-    HumanKB --> HumanAssist[AI Assist Human]
-    HumanAssist --> Send
-    Send --> Monitor[Monitor Response]
-    Monitor --> Resolved{Issue Resolved?}
-    Resolved -->|Yes| Close[Close Ticket]
-    Resolved -->|No| NextStep[Determine Next Step]
-    NextStep --> LoadContext
+%% ========= ROUTER AGENT & SLA TRACKING =========
+subgraph "Router" ["Router & SLA Agent<br>Exchange: 'router_ex (direct)'<br>Queue: 'router_q'"]
+    direction TB
+
+    Router_Init["Load Ticket Context"] --> Router_OrgData["Check Org Settings<br>SLA Policies, Categories, Tags"]
+    Router_OrgData --> Router_IntAnalyze["LLM Intent Analysis"]
+    Router_IntAnalyze --> Router_Priority["Set Priority per SLA"]
+    Router_Priority --> Router_TeamSel["Select Team"]
+    Router_TeamSel --> Router_TeamFound{"Team Found?"}
+    Router_TeamFound -->|Yes| Router_Assign["Assign Ticket to Team"]
+    Router_TeamFound -->|No| Router_Orphan["Mark Orphan - Admin Must Route"]
+    Router_Assign --> Router_SLAStart["Start or Update SLA Timer"]
+    Router_Orphan --> Router_SLAStart
+    Router_SLAStart --> Router_Out["Enqueue to 'support_q'"]
 end
 
-%% Knowledge Management Subgraph
-subgraph Knowledge["Knowledge Management"]
-    DocProcess[Process Document] --> Parse[Parse Document]
-    Parse --> Extract[Extract Content]
-    Extract --> Clean[Clean Content]
-    Clean --> Structure[Structure Content]
-    Structure --> ChunkerEntry
-    ReturnText --> Embed[Generate Embeddings]
-    Embed --> StoreVDB[Store in Vector DB]
-    StoreVDB --> IndexKB[Update Search Index]
+%% ========= SLA FLOW WITH CRON JOBS =========
+subgraph "SLAFlow" ["SLA & Escalation Monitoring<br>Exchange: 'sla_ex (topic)'<br>Queue: 'sla_queue'"]
+    direction TB
+
+    SLA_Config["Admin Configures SLA Policies in Org Settings"] --> SLA_DB["Store SLA Policies in DB"]
+    SLA_DB --> SLA_Cron["Background Cron Job<br>Triggers SLA Checks Periodically"]
+    SLA_Cron --> SLA_Track["Monitor Tickets & Deadlines"]
+    SLA_Track --> SLA_Imminent{"Breach Imminent?"}
+    SLA_Imminent -->|Yes| SLA_Escalate["Notify & Escalate to Admin<br>Exchange: 'notifications_ex (fanout)'"]
+    SLA_Imminent -->|No| SLA_Continue["No Action"]
+    SLA_Escalate --> SLA_Continue
 end
 
-%% Post-Resolution Subgraph
-subgraph PostRes["Post-Resolution Processing"]
-    Close --> Summary[Create Resolution Summary]
-    Summary --> LearnKB[Update Knowledge Base]
-    LearnKB --> Analytics[Update Analytics]
-    
-    %% Feedback Determination
-    Analytics --> CheckCriteria{Check Feedback Criteria}
-    CheckCriteria --> CheckComplexity{Complex Solution?}
-    CheckCriteria --> CheckNovel{Novel Solution?}
-    CheckCriteria --> CheckTime{Resolution Time > SLA?}
-    CheckCriteria --> CheckEscalation{Required Escalation?}
-    
-    CheckComplexity & CheckNovel & CheckTime & CheckEscalation --> EvalFeedback[Evaluate Feedback Need]
-    EvalFeedback --> FeedbackCheck{Need Feedback?}
-    FeedbackCheck -->|Yes| CollectFB[Collect Feedback]
-    FeedbackCheck -->|No| Archive[Archive Ticket]
-    
-    %% Feedback Collection
-    CollectFB --> AutoFB[Automated Survey]
-    CollectFB --> AgentFB[Agent Feedback]
-    AutoFB & AgentFB --> ProcessFB[Process Feedback]
-    ProcessFB --> UpdateModel[Update Learning Model]
-    UpdateModel --> Archive
+%% ========= SUPPORT FLOW (TEAM OR AI) =========
+subgraph "Support" ["Support Agent<br>Exchange: 'support_ex (direct)'<br>Queue: 'support_q'"]
+    direction TB
+
+    Support_Init["Ticket Arrives for Team"] --> Support_Load["Load Ticket & KB Context"]
+    Support_Load --> Support_AIResp["LLM Suggest/Generate Response"]
+    Support_AIResp --> Support_QACheck{"Quality Check"}
+    Support_QACheck -->|Pass| Support_Send["Send Response to Customer"]
+    Support_QACheck -->|Fail| Support_Human["Human in Loop Review"]
+    Support_Human --> Support_Send
+    Support_Send --> Support_Monitor["Monitor Ticket + SLA Updates"]
+    Support_Monitor --> Support_Resolved{"Resolved?"}
+    Support_Resolved -->|Yes| Support_Close["Close Ticket"]
+    Support_Resolved -->|No| Support_Repeat["Await Next Interaction"]
+    Support_Repeat --> Support_Load
+    Support_Close --> Support_Out["Enqueue to 'postres_q'"]
 end
 
-%% Database Operations Subgraph
-subgraph DB["Database Operations"]
-    direction LR
-    DBUpdate[Update Status] --> DBEmbed[Store Embeddings]
-    DBEmbed --> DBLog[Create Audit Log]
-    DBLog --> DBNotify[Send Notifications]
+%% ========= KNOWLEDGE INGESTION FLOW =========
+subgraph "KnowledgeIngestion" ["Knowledge Ingestion<br>Exchange: 'knowledge_ingest_ex (direct)'<br>Queue: 'knowledge_ingest_q'"]
+    direction TB
+
+    KI_NewDoc["Receive New or Updated Doc"] --> KI_Parse["Parse & Clean Content"]
+    KI_Parse --> KI_TokenCheck{"Token Limit?"}
+    KI_TokenCheck -->|Over| KI_ChunkEntry["Enqueue to 'chunker_q'"]
+    KI_TokenCheck -->|Under| KI_Full["Keep Full Content"]
+    KI_Full --> KI_Embed["Generate Embeddings"]
+    KI_ChunkEntry --> KI_Embed
+    KI_Embed --> KI_Store["Store Embeddings in Vector Table"]
+    KI_Store --> KI_Index["Update Search Index"]
+    KI_Index --> KI_Done["Knowledge Ingestion Done"]
 end
 
-%% Error Handling Subgraph
-subgraph Errors["Error Handling"]
-    direction LR
-    ErrCheck[Check Errors] --> ErrLog[Log Error]
-    ErrLog --> ErrNotify[Notify Admin]
-    ErrNotify --> ErrFallback[Use Fallback]
+%% ========= FAQ & KNOWLEDGE ARTICLES (VERSION CONTROL) =========
+subgraph "FAQ_KBFlow" ["FAQ & KB Articles (w/ Version Control)<br>Exchange: 'faq_kb_ex (direct)'<br>Queue: 'faq_kb_q'"]
+    direction TB
+
+    FAQ_Start["Create/Edit FAQ"] --> FAQ_Version["Increment FAQ Version"]
+    FAQ_Version --> FAQ_OldStore["Store Old Version for History"]
+    FAQ_OldStore --> FAQ_RemoveOldEmb["Remove Old Embeddings"]
+    FAQ_RemoveOldEmb --> FAQ_ReEmbed["Re-chunk & Re-embed if Changed"]
+    FAQ_ReEmbed --> FAQ_StoreVec["Store in Vector Table"]
+    FAQ_StoreVec --> FAQ_Index["Update Search Index"]
+    FAQ_Index --> FAQ_Finish["FAQ Updated"]
+
+    KB_Start["Create/Edit KB Article"] --> KB_Version["Increment KB Version"]
+    KB_Version --> KB_OldStore["Retain Previous Versions"]
+    KB_OldStore --> KB_RemoveOldEmb["Remove Old Embeddings"]
+    KB_RemoveOldEmb --> KB_ReEmbed["Re-chunk & Re-embed if Changed"]
+    KB_ReEmbed --> KB_StoreVec["Store in Vector Table"]
+    KB_StoreVec --> KB_Index["Update Search Index"]
+    KB_Index --> KB_Finish["KB Article Updated"]
 end
 
-%% Cross-Subgraph Connections
-PreProcess --> Router
-Router --> Support
-Support --> PostRes
-Knowledge --> Router
-    
-%% Error Connections
-Chunker -->|Error| Errors
-Router -->|Error| Errors
-Support -->|Error| Errors
-Knowledge -->|Error| Errors
-PostRes -->|Error| Errors
+%% ========= CHUNKER & SUMMARIZER AGENT =========
+subgraph "Chunker" ["Chunker & Summarizer<br>Exchange: 'chunker_ex (direct)'<br>Queue: 'chunker_q'"]
+    direction TB
 
-%% Database Update Connections
-Chunker --> DB
-Router --> DB
-Support --> DB
-Knowledge --> DB
-PostRes --> DB
+    ChkStart["Receive Large Text"] --> ChkCount["Count Tokens"]
+    ChkCount --> ChkLimit{"Within Limit?"}
+    ChkLimit -->|Yes| ChkReturn["Return Original Text"]
+    ChkLimit -->|No| ChkSplit["Split into Chunks"]
+    ChkSplit --> ChkLoop["Iterate Over Chunks"]
+    ChkLoop --> ChkSize{"Chunk exceeds limit?"}
+    ChkSize -->|Yes| ChkResplit["Recursively Split"]
+    ChkResplit --> ChkLoop
+    ChkSize -->|No| ChkSumm["Summarize Chunk"]
+    ChkSumm --> ChkSummSize{"Summary Too Big?"}
+    ChkSummSize -->|Yes| ChkRestrict["Retry Tighter Summaries"]
+    ChkRestrict --> ChkSumm
+    ChkSummSize -->|No| ChkCollect["Collect Summaries"]
+    ChkCollect --> ChkFinal["Combine Summaries"]
+    ChkFinal --> ChkReturn
+end
 
-%% Styling
-classDef process fill:#f9f,stroke:#333,stroke-width:2px;
-classDef decision fill:#fff,stroke:#333,stroke-width:2px;
-classDef storage fill:#f96,stroke:#333,stroke-width:2px;
-    
-class NewTicket,NewDoc,NewChat process;
-class ModCheck,Check,HasTeam,QCheck,Resolved,FeedbackCheck decision;
-class DB,Knowledge storage;
+%% ========= POST-RESOLUTION & FEEDBACK =========
+subgraph "PostResolutionFlow" ["Post-Resolution Agent<br>Exchange: 'postres_ex (direct)'<br>Queue: 'postres_q'"]
+    direction TB
+
+    Post_TicketClosed["Ticket Closed"] --> Post_Summarize["Summarize Resolution"]
+    Post_Summarize --> Post_CheckNovel{"Solution Novel?"}
+    Post_CheckNovel -->|Yes| Post_NewKB["Create New KB Entry via KnowledgeIngestion"]
+    Post_CheckNovel -->|No| Post_SkipKB["Skip KB Update"]
+    Post_NewKB --> Post_Analytics["Log & Analyze"]
+    Post_SkipKB --> Post_Analytics
+    Post_Analytics --> Post_Feedback{"Collect Feedback?"}
+    Post_Feedback -->|Yes| Post_GetRating["Prompt for Rating, Comments"]
+    Post_Feedback -->|No| Post_Archive["Archive Ticket"]
+    Post_GetRating --> Post_Archive
+    Post_Archive --> Post_Complete["Post-Resolution Complete"]
+end
+
+%% ========= NOTIFICATIONS SYSTEM =========
+subgraph "NotificationsFlow" ["Notifications Service<br>Exchange: 'notifications_ex (fanout)'<br>Queue: multiple fanout bindings"]
+    direction TB
+
+    NotifyStart["Trigger Notification"] --> NotifyFanout["Broadcast to Admins, Agents, Customers"]
+    NotifyFanout --> NotifyDelivery["Deliver Notifications<br>Email, App, Slack, etc."]
+    NotifyDelivery --> NotifyLog["Create Audit Log Entry"]
+    NotifyLog --> NotifyEnd["Notifications Complete"]
+end
+
+%% ========= ANALYTICS & REPORTING =========
+subgraph "AnalyticsFlow" ["Analytics & Reporting<br>Exchange: 'analytics_ex (topic)'<br>Queue: 'analytics_q'"]
+    direction TB
+
+    AnalyticsEvt["Receive System Event"] --> AnalyticsTransform["Transform Data for Reporting"]
+    AnalyticsTransform --> AnalyticsStore["Store Stats & Aggregates"]
+    AnalyticsStore --> AnalyticsInsights["Generate Insights / Dashboards"]
+    AnalyticsInsights --> AnalyticsEnd["Analytics Complete"]
+end
+
+%% ========= ERROR HANDLING =========
+subgraph "Errors" ["Error Handling<br>Exchange: 'errors_ex (fanout)'<br>Queue: 'errors_q'"]
+    direction TB
+
+    ErrCheck["Check Error Type"] --> ErrLog["Log Error Data"]
+    ErrLog --> ErrNotify["Notify Admin + Possibly Retry"]
+    ErrNotify --> ErrFallback["Fallback or Manual Intervention"]
+end
+
+%% ========= DATABASE & AUDIT TRAILS =========
+subgraph "Database" ["Database: PostgreSQL + pgvector<br>Audit Triggers on All Writes"]
+    direction TB
+
+    MainTables["Users, Tickets, Orgs, Teams,<br>SLA Policies, Categories, Tagging"] --> VectorTable["Vector Embeddings Table"]
+    MainTables --> AuditTrails["Audit Triggers & Logs"]
+    MainTables --> ConvHistory["Store Conversation History"]
+    VectorTable --> AuditTrails
+end
+
+%% ============ CROSS-SUBGRAPH LINKS ============
+RegistrationAndOrgSetup --> Database
+RegistrationAndOrgSetup --> Errors
+
+ChatFlow --> Database
+ChatFlow --> Errors
+
+TicketPreProcess --> Database
+TicketPreProcess --> Errors
+
+Router --> Database
+Router --> Errors
+
+SLAFlow --> Database
+SLAFlow --> Errors
+
+Support --> Database
+Support --> Errors
+
+KnowledgeIngestion --> Database
+KnowledgeIngestion --> Errors
+
+FAQ_KBFlow --> KnowledgeIngestion
+FAQ_KBFlow --> Errors
+
+Chunker --> Database
+Chunker --> Errors
+
+PostResolutionFlow --> KnowledgeIngestion
+PostResolutionFlow --> Database
+PostResolutionFlow --> Errors
+
+NotificationsFlow --> Database
+NotificationsFlow --> Errors
+
+AnalyticsFlow --> Database
+AnalyticsFlow --> Errors
+
+%% MAIN ENTRY POINTS
+RegFinish --> ChatStart
+ChatGenTicket --> TPP_Init
+TPP_Out --> Router_Init
+Router_Out --> Support_Init
+Support_Out --> Post_TicketClosed

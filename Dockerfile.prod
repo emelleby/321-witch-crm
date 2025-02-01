@@ -1,0 +1,48 @@
+FROM node:23-slim AS base
+
+ARG PORT=3000
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+FROM base AS dependencies
+COPY pnpm-lock.yaml package.json ./
+RUN pnpm install --frozen-lockfile
+
+FROM base AS build
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+
+# Public build-time environment variables
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+
+RUN pnpm run build
+
+FROM base AS run
+
+ENV NODE_ENV=production
+ENV PORT=${PORT}
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+RUN mkdir .next
+RUN chown nextjs:nodejs .next
+
+COPY --from=build /app/public ./public
+COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE ${PORT}
+
+ENV HOSTNAME="0.0.0.0"
+CMD ["node", "server.js"]

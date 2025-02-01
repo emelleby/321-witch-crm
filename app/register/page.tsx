@@ -18,6 +18,8 @@ export default function RegisterPage() {
               alt="Witch House"
               width={80}
               height={80}
+              style={{ width: "auto", height: "80px" }}
+              priority
             />
             <h1 className="text-2xl font-bold tracking-tight">Witch House</h1>
           </div>

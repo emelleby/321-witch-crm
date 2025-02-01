@@ -1,10 +1,11 @@
 # Witch House CRM Directory Structure
 
-Generated on: 2025-01-24 19:05:17 CST
+Generated on: 2025-01-31 20:04:30 CST
 
 ```
 ├── .vscode/
-    └── settings.json
+    ├── settings.json
+    └── tasks.json
 ├── app/
     ├── (protected)/
         ├── admin/
@@ -19,13 +20,18 @@ Generated on: 2025-01-24 19:05:17 CST
                 ├── [id]/
                     └── page.tsx
                 ├── page.tsx
+            ├── organization/
+                └── page.tsx
             ├── reports/
                 └── page.tsx
             ├── teams/
                 └── page.tsx
-            ├── templates/
-                └── page.tsx
+            ├── tickets/
+                ├── [id]/
+                    └── page.tsx
+                ├── page.tsx
             ├── layout.tsx
+            ├── page.tsx
         ├── agent/
             ├── dashboard/
                 ├── layout.tsx
@@ -55,10 +61,13 @@ Generated on: 2025-01-24 19:05:17 CST
                     └── page.tsx
                 ├── page.tsx
             ├── layout.tsx
+        ├── layout.tsx
     ├── api/
-        ├── tickets/
-            ├── process/
-                └── route.ts
+        ├── triggers/
+            ├── ticket/
+                ├── process/
+                    ├── [id]/
+                        └── route.ts
     ├── confirm/
         └── route.ts
     ├── error/
@@ -83,7 +92,14 @@ Generated on: 2025-01-24 19:05:17 CST
     ├── page.tsx
 ├── components/
     ├── admin/
-        └── ticket-categories.tsx
+        ├── tag-category-management.tsx
+        ├── team-management.tsx
+        ├── ticket-categories.tsx
+        ├── ticket-management.tsx
+        └── ticket-review-queue.tsx
+    ├── agent/
+        ├── performance-metrics.tsx
+        └── unassigned-tickets.tsx
     ├── article/
         ├── article-detail.tsx
         └── version-history.tsx
@@ -101,26 +117,20 @@ Generated on: 2025-01-24 19:05:17 CST
     ├── chat/
         ├── chat-interface.tsx
         └── message-item.tsx
-    ├── editor/
-        ├── nodes/
-            └── image-node.tsx
-        ├── plugins/
-            ├── code.tsx
-            ├── on-change.tsx
-            ├── preview.tsx
-            ├── table.tsx
-            └── toolbar.tsx
-        ├── rich-text-editor.tsx
-    ├── providers/
+    ├── customer/
+        └── ticket-view.tsx
+    ├── notifications/
+        └── notification-center.tsx
     ├── sidebar/
         ├── admin-sidebar.tsx
         ├── agent-sidebar.tsx
         ├── base-sidebar.tsx
         └── customer-sidebar.tsx
     ├── tickets/
-        └── advanced-search.tsx
-    ├── typography/
-        └── inline-code.tsx
+        ├── advanced-search.tsx
+        ├── create-ticket-form.tsx
+        ├── ticket-detail.tsx
+        └── ticket-list.tsx
     ├── ui/
         ├── accordion.tsx
         ├── alert-dialog.tsx
@@ -173,6 +183,7 @@ Generated on: 2025-01-24 19:05:17 CST
     ├── file-upload.tsx
     ├── page-header.tsx
     ├── theme-switcher.tsx
+    ├── ticket-categories.tsx
     ├── ticket-feedback.tsx
 ├── cursor_agent_functions/
     ├── generate_project_structure.sh
@@ -199,12 +210,6 @@ Generated on: 2025-01-24 19:05:17 CST
     ├── use-ticket-updates.ts
     ├── use-toast.ts
 ├── lib/
-    ├── server/
-        ├── ai/
-            ├── TODO.md
-            └── chain.ts
-        ├── shared/
-            └── get-user-info.ts
     ├── services/
         └── auth.ts
     ├── sql_queries/
@@ -237,15 +242,6 @@ Generated on: 2025-01-24 19:05:17 CST
         ├── project-ref
         ├── rest-version
         └── storage-version
-    ├── functions/
-        ├── _shared/
-            └── cors.ts
-        ├── generate_embeddings/
-            ├── .npmrc
-            ├── deno.json
-            ├── deno.lock
-            └── index.ts
-        ├── .env
     ├── migrations/
         └── 00001_initial.sql
     ├── tests/
@@ -298,8 +294,8 @@ Generated on: 2025-01-24 19:05:17 CST
         ├── server-client.ts
         └── server.ts
     ├── auth-routing.ts
-    ├── markdown.ts
     ├── utils.ts
+├── .cache_ggshield
 ├── .cursorignore
 ├── .cursorrules
 ├── .dockerignore
@@ -307,22 +303,29 @@ Generated on: 2025-01-24 19:05:17 CST
 ├── .env.local
 ├── .env.prod
 ├── .envrc
-├── .eslintrc.json
 ├── .rules.TEMPLATE
+├── .sqlfluff
 ├── Dockerfile.dev
+├── Dockerfile.prod
+├── InfoForFrontend.md
 ├── LICENSE
 ├── README.md
 ├── TODO.md
+├── brainlift.md
 ├── components.json
 ├── database.types.ts
+├── eslint.config.mjs
+├── frontend-zendesk.code-workspace
+├── middleware.ts
 ├── next-env.d.ts
 ├── next.config.ts
 ├── output.png
 ├── package.json
 ├── playwright.config.ts
 ├── pnpm-lock.yaml
-├── postcss.config.js
+├── postcss.config.mjs
 ├── process_template.sh
+├── summary_for_llm.md
 ├── tailwind.config.ts
 ├── tsconfig.json
 ├── vitest.config.mts

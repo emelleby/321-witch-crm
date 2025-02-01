@@ -66,3 +66,12 @@ node_modules/
 old_migrations/
 cursor_agent_functions/
 brainlift.md
+
+
+.sqlfluff
+frontend-zendesk.code-workspace
+summary_for_llm.md
+
+docker-compose.prod.yml
+InfoForFrontend.md
+.vscode/tasks.json

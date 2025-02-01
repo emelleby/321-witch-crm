@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { CustomerSidebar } from "@/components/sidebar/customer-sidebar";
+import { Database } from "@/database.types";
 import { createClient } from "@/utils/supabase/server";
 
 export default async function CustomerLayout({
@@ -8,7 +9,7 @@ export default async function CustomerLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
+  const supabase = await createClient<Database>();
 
   const {
     data: { user },

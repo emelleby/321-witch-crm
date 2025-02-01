@@ -64,6 +64,13 @@ const COLOR_OPTIONS = [
   { label: "Card", value: "hsl(var(--card))" },
 ];
 
+type CategoryForm = {
+  category_name: string;
+  category_description: string;
+  display_color: string;
+  organization_id: string;
+};
+
 export function TicketCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -72,10 +79,10 @@ export function TicketCategories() {
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
   const [showTagDialog, setShowTagDialog] = useState(false);
-  const [categoryForm, setCategoryForm] = useState({
+  const [categoryForm, setCategoryForm] = useState<CategoryForm>({
     category_name: "",
     category_description: "",
-    display_color: DEFAULT_COLOR,
+    display_color: "#000000",
     organization_id: "",
   });
   const [tagForm, setTagForm] = useState({
@@ -85,22 +92,29 @@ export function TicketCategories() {
     organization_id: "",
   });
 
-  const supabase = createBrowserSupabaseClient();
   const { toast } = useToast();
+  const supabase = createBrowserSupabaseClient();
 
-  const fetchData = useCallback(async () => {
+  const fetchCategories = useCallback(async () => {
     try {
-      const [categoriesResponse, tagsResponse] = await Promise.all([
-        supabase.from("ticket_categories").select("*").order("category_name"),
-        supabase.from("ticket_tags").select("*").order("tag_name"),
-      ]);
+      const { data, error } = await supabase
+        .from("ticket_categories")
+        .select("*")
+        .order("category_name");
 
-      if (categoriesResponse.error) throw categoriesResponse.error;
-      if (tagsResponse.error) throw tagsResponse.error;
+      if (error) {
+        console.error("Error fetching categories:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load categories",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      setCategories(categoriesResponse.data);
-      setTags(tagsResponse.data);
+      setCategories(data || []);
     } catch (error) {
+      console.error("Error:", error);
       toast({
         title: "Error",
         description: "Failed to fetch data",
@@ -111,27 +125,93 @@ export function TicketCategories() {
     }
   }, [supabase, toast]);
 
+  const fetchTags = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("ticket_tags")
+        .select("*")
+        .order("tag_name");
+
+      if (error) {
+        console.error("Error fetching tags:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load tags",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setTags(data || []);
+    } catch (error) {
+      console.error("Error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch tags",
+        variant: "destructive",
+      });
+    }
+  }, [supabase, toast]);
+
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchCategories();
+    fetchTags();
+  }, [fetchCategories, fetchTags]);
 
   const handleCategorySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const { data, error } = editingCategory
+      // Get user's organization_id
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to manage categories",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { data: userProfile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profileError || !userProfile?.organization_id) {
+        toast({
+          title: "Error",
+          description: "Failed to get organization information",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const formData = {
+        ...categoryForm,
+        organization_id: userProfile.organization_id,
+      };
+
+      const { error } = editingCategory
         ? await supabase
             .from("ticket_categories")
-            .update(categoryForm)
+            .update(formData)
             .eq("category_id", editingCategory)
-            .select()
-        : await supabase
-            .from("ticket_categories")
-            .insert([categoryForm])
-            .select();
+        : await supabase.from("ticket_categories").insert([formData]);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error saving category:", error);
+        toast({
+          title: "Error",
+          description: "Failed to save category",
+          variant: "destructive",
+        });
+        return;
+      }
 
       toast({
         title: "Success",
@@ -142,12 +222,13 @@ export function TicketCategories() {
       setCategoryForm({
         category_name: "",
         category_description: "",
-        display_color: DEFAULT_COLOR,
+        display_color: "#000000",
         organization_id: "",
       });
       setShowCategoryDialog(false);
-      fetchData();
+      fetchCategories();
     } catch (error) {
+      console.error("Error:", error);
       toast({
         title: "Error",
         description: "Failed to save category",
@@ -163,15 +244,16 @@ export function TicketCategories() {
     setLoading(true);
 
     try {
-      const { data, error } = editingTag
-        ? await supabase
-            .from("ticket_tags")
-            .update(tagForm)
-            .eq("tag_id", editingTag)
-            .select()
-        : await supabase.from("ticket_tags").insert([tagForm]).select();
-
-      if (error) throw error;
+      if (!editingTag) {
+        const { error } = await supabase.from("ticket_tags").insert([tagForm]);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("ticket_tags")
+          .update(tagForm)
+          .eq("tag_id", editingTag);
+        if (error) throw error;
+      }
 
       toast({
         title: "Success",
@@ -186,8 +268,9 @@ export function TicketCategories() {
         organization_id: "",
       });
       setShowTagDialog(false);
-      fetchData();
+      fetchTags();
     } catch (error) {
+      console.error("Error:", error);
       toast({
         title: "Error",
         description: "Failed to save tag",
@@ -227,15 +310,24 @@ export function TicketCategories() {
         .delete()
         .eq("category_id", id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error deleting category:", error);
+        toast({
+          title: "Error",
+          description: "Failed to delete category",
+          variant: "destructive",
+        });
+        return;
+      }
 
       toast({
         title: "Success",
         description: "Category deleted",
         variant: "default",
       });
-      fetchData();
+      fetchCategories();
     } catch (error) {
+      console.error("Error:", error);
       toast({
         title: "Error",
         description: "Failed to delete category",
@@ -246,20 +338,24 @@ export function TicketCategories() {
 
   const handleDeleteTag = async (id: string) => {
     try {
-      const { error } = await supabase
+      const { error: deleteError } = await supabase
         .from("ticket_tags")
         .delete()
         .eq("tag_id", id);
 
-      if (error) throw error;
+      if (deleteError) {
+        console.error("Error deleting tag:", deleteError);
+        throw deleteError;
+      }
 
       toast({
         title: "Success",
         description: "Tag deleted",
         variant: "default",
       });
-      fetchData();
-    } catch (error) {
+      fetchTags();
+    } catch (err) {
+      console.error("Error deleting tag:", err);
       toast({
         title: "Error",
         description: "Failed to delete tag",

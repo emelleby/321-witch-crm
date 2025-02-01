@@ -1,13 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import ResetPasswordForm from "@/components/auth/ResetPasswordForm";
 import { useToast } from "@/hooks/use-toast";
 import WitchHouseLogo from "@/public/images/Shapes 14.png";
 import { createBrowserSupabaseClient } from "@/utils/supabase/client";
@@ -59,93 +56,40 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="grid min-h-svh lg:grid-cols-2">
-      <div className="flex flex-col gap-4 p-6 md:p-10">
-        <div className="flex justify-center gap-2 md:justify-start">
-          <Link href="/" className="flex items-center gap-2 font-medium">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-transparent text-primary-foreground">
-              <Image
-                src={WitchHouseLogo}
-                alt="Witch House"
-                width={32}
-                height={32}
-              />
-            </div>
-            Witch House
-          </Link>
-        </div>
-        <div className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-xs">
-            <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-              <div className="flex flex-col items-center gap-2 text-center">
-                <h1 className="text-2xl font-bold">Reset your password</h1>
-                <p className="text-balance text-sm text-muted-foreground">
-                  Enter your new password below
-                </p>
-              </div>
-
-              <div className="grid gap-4">
-                {error && (
-                  <div className="text-sm text-destructive text-center">
-                    {error}
-                  </div>
-                )}
-
-                <div className="grid gap-2">
-                  <Label htmlFor="password">New Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    minLength={8}
-                    required
-                  />
-                  {password && password.length < 8 && (
-                    <p className="text-xs text-muted-foreground">
-                      Password must be at least 8 characters
-                    </p>
-                  )}
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    minLength={8}
-                    required
-                  />
-                </div>
-
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Updating..." : "Update Password"}
-                </Button>
-
+    <div className="flex h-screen items-center justify-center bg-background">
+      <div
+        className="absolute inset-0 h-full w-full"
+        style={{ transform: "translate3d(0, 0, 0)" }}
+      ></div>
+      <div className="z-10 w-full max-w-lg">
+        <div className="flex flex-col justify-center items-center space-y-6">
+          <div className="flex flex-col items-center space-y-2">
+            <Image
+              src={WitchHouseLogo}
+              alt="Witch House"
+              width={80}
+              height={80}
+              style={{ width: "auto", height: "80px" }}
+              priority
+            />
+            <h1 className="text-2xl font-bold tracking-tight">Witch House</h1>
+          </div>
+          <div className="w-full px-8">
+            <div className="grid gap-6">
+              <div className="flex h-20 items-end pb-6 justify-center">
                 <div className="text-center">
-                  <Button
-                    variant="link"
-                    className="text-sm"
-                    onClick={() => router.push("/login")}
-                  >
-                    Back to login
-                  </Button>
+                  <h1 className="text-2xl font-semibold tracking-tight">
+                    Reset Password
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    Enter your new password
+                  </p>
                 </div>
               </div>
-            </form>
+              <ResetPasswordForm />
+            </div>
           </div>
         </div>
-      </div>
-      <div className="relative hidden bg-background lg:block">
-        <Image
-          src={WitchHouseLogo}
-          alt="Image"
-          className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.8]"
-          width={1000}
-          height={1000}
-        />
       </div>
     </div>
   );

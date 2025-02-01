@@ -1,111 +1,99 @@
 "use client";
 
-import { useState } from "react";
-
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Database } from "@/database.types";
-import { useToast } from "@/hooks/use-toast";
-import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-type Ticket = Database["public"]["Tables"]["support_tickets"]["Row"];
-type UserProfile = Database["public"]["Tables"]["user_profiles"]["Row"];
-
-export default function ReportsPage() {
-  const supabase = createBrowserSupabaseClient();
-  const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("agent");
-
+export default function AdminReportsPage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
-        <p className="text-muted-foreground">
-          View performance metrics and analytics
-        </p>
-      </div>
+    <div className="container py-6 space-y-6">
+      <h1 className="text-3xl font-bold">Reports & Analytics</h1>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="agent">Agent Performance</TabsTrigger>
-          <TabsTrigger value="team">Team Performance</TabsTrigger>
-          <TabsTrigger value="sla">SLA Compliance</TabsTrigger>
-          <TabsTrigger value="volume">Ticket Volume</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="tickets">Tickets</TabsTrigger>
+          <TabsTrigger value="agents">Agents</TabsTrigger>
+          <TabsTrigger value="teams">Teams</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="agent" className="space-y-4">
-          <Card className="p-6">
-            <div className="text-center p-4">
-              <p className="text-lg text-muted-foreground">
-                Agent performance reporting coming soon...
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                This will include metrics like:
-              </p>
-              <ul className="list-disc list-inside mt-2 text-sm text-muted-foreground">
-                <li>Tickets resolved</li>
-                <li>Average response time</li>
-                <li>Customer satisfaction</li>
-                <li>First response time</li>
-              </ul>
-            </div>
+        <TabsContent value="overview">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">
+                  Total Tickets
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">1,234</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">
+                  Average Response Time
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">2.5h</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">
+                  Resolution Rate
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">94%</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">
+                  Customer Satisfaction
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">4.8/5</div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="tickets">
+          <Card>
+            <CardHeader>
+              <CardTitle>Ticket Analytics</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p>Ticket analytics coming soon...</p>
+            </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="team" className="space-y-4">
-          <Card className="p-6">
-            <div className="text-center p-4">
-              <p className="text-lg text-muted-foreground">
-                Team performance reporting coming soon...
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                This will include metrics like:
-              </p>
-              <ul className="list-disc list-inside mt-2 text-sm text-muted-foreground">
-                <li>Team ticket volume</li>
-                <li>Average resolution time</li>
-                <li>Team satisfaction scores</li>
-                <li>Workload distribution</li>
-              </ul>
-            </div>
+        <TabsContent value="agents">
+          <Card>
+            <CardHeader>
+              <CardTitle>Agent Performance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p>Agent performance metrics coming soon...</p>
+            </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="sla" className="space-y-4">
-          <Card className="p-6">
-            <div className="text-center p-4">
-              <p className="text-lg text-muted-foreground">
-                SLA compliance reporting coming soon...
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                This will include metrics like:
-              </p>
-              <ul className="list-disc list-inside mt-2 text-sm text-muted-foreground">
-                <li>Response time compliance</li>
-                <li>Resolution time compliance</li>
-                <li>SLA breaches</li>
-                <li>Time to breach warnings</li>
-              </ul>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="volume" className="space-y-4">
-          <Card className="p-6">
-            <div className="text-center p-4">
-              <p className="text-lg text-muted-foreground">
-                Ticket volume reporting coming soon...
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                This will include metrics like:
-              </p>
-              <ul className="list-disc list-inside mt-2 text-sm text-muted-foreground">
-                <li>Tickets by status</li>
-                <li>Tickets by priority</li>
-                <li>Tickets by category</li>
-                <li>Volume trends</li>
-              </ul>
-            </div>
+        <TabsContent value="teams">
+          <Card>
+            <CardHeader>
+              <CardTitle>Team Analytics</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p>Team analytics coming soon...</p>
+            </CardContent>
           </Card>
         </TabsContent>
       </Tabs>

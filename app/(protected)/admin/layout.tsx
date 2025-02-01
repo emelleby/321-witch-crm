@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
 
 import { AdminSidebar } from "@/components/sidebar/admin-sidebar";
+import { Database } from "@/database.types";
 import { createClient } from "@/utils/supabase/server";
-
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
+  const supabase = await createClient<Database>();
 
   const {
     data: { user },

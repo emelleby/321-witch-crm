@@ -1,11 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
-import { createClient } from "@/utils/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -15,70 +11,90 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Database } from "@/database.types";
+import { useToast } from "@/hooks/use-toast";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 import { Pencil, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
-type CategoryType = {
-  category_id: string;
-  category_name: string;
-  description: string | null;
-  organization_id: string;
-  created_at: string;
-};
-
-type TagType = {
-  tag_id: string;
-  tag_name: string;
-  description: string | null;
-  organization_id: string;
-  created_at: string;
-};
+type Category = Database["public"]["Tables"]["ticket_categories"]["Row"];
+type Tag = Database["public"]["Tables"]["ticket_tags"]["Row"];
 
 type CategoryFormData = {
   category_name: string;
-  description: string;
+  category_description: string;
+  organization_id: string;
 };
 
-export default function OrganizationPage() {
-  const [categories, setCategories] = useState<CategoryType[]>([]);
-  const [tags, setTags] = useState<TagType[]>([]);
+type TagFormData = {
+  tag_name: string;
+  tag_description: string;
+  organization_id: string;
+};
+
+export default function AdminOrganizationPage() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingCategory, setEditingCategory] = useState<CategoryType | null>(
-    null
-  );
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryForm, setCategoryForm] = useState<CategoryFormData>({
     category_name: "",
-    description: "",
+    category_description: "",
+    organization_id: "",
   });
-  const [editingTag, setEditingTag] = useState<TagType | null>(null);
-  const [tagForm, setTagForm] = useState<{
-    tag_name: string;
-    description: string;
-  }>({
+  const [editingTag, setEditingTag] = useState<Tag | null>(null);
+  const [tagForm, setTagForm] = useState<TagFormData>({
     tag_name: "",
-    description: "",
+    tag_description: "",
+    organization_id: "",
   });
   const { toast } = useToast();
-  const supabase = createClient();
+  const supabase = createBrowserSupabaseClient();
 
-  useEffect(() => {
-    fetchOrganizationData();
-  }, []);
-
-  const fetchOrganizationData = async () => {
+  const fetchOrganizationData = useCallback(async () => {
     try {
       setLoading(true);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-      const [categoriesResult, tagsResult] = await Promise.all([
-        supabase.from("ticket_categories").select("*").order("category_name"),
-        supabase.from("organization_tags").select("*").order("tag_name"),
-      ]);
+      const { data: userProfile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .single();
 
-      if (categoriesResult.error) throw categoriesResult.error;
-      if (tagsResult.error) throw tagsResult.error;
+      if (profileError || !userProfile?.organization_id) {
+        toast({
+          title: "Error",
+          description: "Failed to get organization information",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      setCategories(categoriesResult.data);
-      setTags(tagsResult.data);
+      // Fetch categories
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from("ticket_categories")
+        .select("*")
+        .eq("organization_id", userProfile.organization_id)
+        .order("category_name");
+
+      if (categoriesError) throw categoriesError;
+      setCategories(categoriesData);
+
+      // Fetch tags
+      const { data: tagsData, error: tagsError } = await supabase
+        .from("ticket_tags")
+        .select("*")
+        .eq("organization_id", userProfile.organization_id)
+        .order("tag_name");
+
+      if (tagsError) throw tagsError;
+      setTags(tagsData);
     } catch (error) {
       console.error("Error fetching organization data:", error);
       toast({
@@ -89,32 +105,73 @@ export default function OrganizationPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, toast]);
+
+  useEffect(() => {
+    fetchOrganizationData();
+  }, [fetchOrganizationData]);
 
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data, error } = await supabase
-        .from("ticket_categories")
-        .insert([
-          {
-            category_name: categoryForm.category_name,
-            description: categoryForm.description || null,
-          },
-        ])
-        .select()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to create a category",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Get user's organization_id
+      const { data: userProfile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("organization_id")
+        .eq("user_id", user.id)
         .single();
 
-      if (error) throw error;
+      if (profileError || !userProfile?.organization_id) {
+        toast({
+          title: "Error",
+          description: "Failed to get organization information",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      setCategories([...categories, data]);
-      setCategoryForm({ category_name: "", description: "" });
+      const { error: categoryError } = await supabase
+        .from("ticket_categories")
+        .insert({
+          category_name: categoryForm.category_name,
+          category_description: categoryForm.category_description || null,
+          organization_id: userProfile.organization_id,
+        });
+
+      if (categoryError) {
+        console.error("Error creating category:", categoryError);
+        toast({
+          title: "Error",
+          description: "Failed to create category",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setCategoryForm({
+        category_name: "",
+        category_description: "",
+        organization_id: "",
+      });
+      fetchOrganizationData();
       toast({
         title: "Success",
         description: "Category created successfully",
       });
     } catch (error) {
-      console.error("Error creating category:", error);
+      console.error("Error:", error);
       toast({
         title: "Error",
         description: "Failed to create category",
@@ -128,25 +185,23 @@ export default function OrganizationPage() {
     if (!editingCategory) return;
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("ticket_categories")
         .update({
           category_name: categoryForm.category_name,
-          description: categoryForm.description || null,
+          category_description: categoryForm.category_description || null,
         })
-        .eq("category_id", editingCategory.category_id)
-        .select()
-        .single();
+        .eq("category_id", editingCategory.category_id);
 
       if (error) throw error;
 
-      setCategories(
-        categories.map((cat) =>
-          cat.category_id === editingCategory.category_id ? data : cat
-        )
-      );
       setEditingCategory(null);
-      setCategoryForm({ category_name: "", description: "" });
+      setCategoryForm({
+        category_name: "",
+        category_description: "",
+        organization_id: "",
+      });
+      fetchOrganizationData();
       toast({
         title: "Success",
         description: "Category updated successfully",
@@ -190,27 +245,54 @@ export default function OrganizationPage() {
   const handleCreateTag = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data, error } = await supabase
-        .from("organization_tags")
-        .insert([
-          {
-            tag_name: tagForm.tag_name,
-            description: tagForm.description || null,
-          },
-        ])
-        .select()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to create a tag",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Get user's organization_id
+      const { data: userProfile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("organization_id")
+        .eq("user_id", user.id)
         .single();
 
-      if (error) throw error;
+      if (profileError || !userProfile?.organization_id) {
+        toast({
+          title: "Error",
+          description: "Failed to get organization information",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      setTags([...tags, data]);
-      setTagForm({ tag_name: "", description: "" });
+      const { error: tagError } = await supabase.from("ticket_tags").insert({
+        tag_name: tagForm.tag_name,
+        tag_description: tagForm.tag_description || null,
+        organization_id: userProfile.organization_id,
+      });
+
+      if (tagError) throw tagError;
+
+      setTagForm({
+        tag_name: "",
+        tag_description: "",
+        organization_id: "",
+      });
+      fetchOrganizationData();
       toast({
         title: "Success",
         description: "Tag created successfully",
       });
     } catch (error) {
-      console.error("Error creating tag:", error);
+      console.error("Error:", error);
       toast({
         title: "Error",
         description: "Failed to create tag",
@@ -224,23 +306,23 @@ export default function OrganizationPage() {
     if (!editingTag) return;
 
     try {
-      const { data, error } = await supabase
-        .from("organization_tags")
+      const { error } = await supabase
+        .from("ticket_tags")
         .update({
           tag_name: tagForm.tag_name,
-          description: tagForm.description || null,
+          tag_description: tagForm.tag_description || null,
         })
-        .eq("tag_id", editingTag.tag_id)
-        .select()
-        .single();
+        .eq("tag_id", editingTag.tag_id);
 
       if (error) throw error;
 
-      setTags(
-        tags.map((tag) => (tag.tag_id === editingTag.tag_id ? data : tag))
-      );
       setEditingTag(null);
-      setTagForm({ tag_name: "", description: "" });
+      setTagForm({
+        tag_name: "",
+        tag_description: "",
+        organization_id: "",
+      });
+      fetchOrganizationData();
       toast({
         title: "Success",
         description: "Tag updated successfully",
@@ -260,7 +342,7 @@ export default function OrganizationPage() {
 
     try {
       const { error } = await supabase
-        .from("organization_tags")
+        .from("ticket_tags")
         .delete()
         .eq("tag_id", tagId);
 
@@ -343,14 +425,14 @@ export default function OrganizationPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="description">Description</Label>
+                      <Label htmlFor="category_description">Description</Label>
                       <Textarea
-                        id="description"
-                        value={categoryForm.description}
+                        id="category_description"
+                        value={categoryForm.category_description}
                         onChange={(e) =>
                           setCategoryForm((prev) => ({
                             ...prev,
-                            description: e.target.value,
+                            category_description: e.target.value,
                           }))
                         }
                       />
@@ -377,9 +459,9 @@ export default function OrganizationPage() {
                         <h3 className="font-medium">
                           {category.category_name}
                         </h3>
-                        {category.description && (
+                        {category.category_description && (
                           <p className="text-sm text-gray-500">
-                            {category.description}
+                            {category.category_description}
                           </p>
                         )}
                       </div>
@@ -391,7 +473,9 @@ export default function OrganizationPage() {
                             setEditingCategory(category);
                             setCategoryForm({
                               category_name: category.category_name,
-                              description: category.description || "",
+                              category_description:
+                                category.category_description || "",
+                              organization_id: category.organization_id,
                             });
                           }}
                           data-testid={`edit-category-${category.category_id}`}
@@ -453,11 +537,11 @@ export default function OrganizationPage() {
                       <Label htmlFor="tag_description">Description</Label>
                       <Textarea
                         id="tag_description"
-                        value={tagForm.description}
+                        value={tagForm.tag_description}
                         onChange={(e) =>
                           setTagForm((prev) => ({
                             ...prev,
-                            description: e.target.value,
+                            tag_description: e.target.value,
                           }))
                         }
                       />
@@ -482,9 +566,9 @@ export default function OrganizationPage() {
                     >
                       <div>
                         <h3 className="font-medium">{tag.tag_name}</h3>
-                        {tag.description && (
+                        {tag.tag_description && (
                           <p className="text-sm text-gray-500">
-                            {tag.description}
+                            {tag.tag_description}
                           </p>
                         )}
                       </div>
@@ -496,7 +580,8 @@ export default function OrganizationPage() {
                             setEditingTag(tag);
                             setTagForm({
                               tag_name: tag.tag_name,
-                              description: tag.description || "",
+                              tag_description: tag.tag_description || "",
+                              organization_id: tag.organization_id,
                             });
                           }}
                           data-testid={`edit-tag-${tag.tag_id}`}

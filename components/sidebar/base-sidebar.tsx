@@ -8,22 +8,20 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { createBrowserSupabaseClient } from "@/utils/supabase/client";
 
-interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
-  items?: {
+interface BaseSidebarProps extends React.HTMLAttributes<HTMLDivElement> {
+  items: {
     title: string;
     href: string;
     icon?: React.ReactNode;
     badge?: number;
   }[];
-  defaultCollapsed?: boolean;
 }
 
 export function BaseSidebar({
   className,
   items = [],
-  defaultCollapsed = false,
   ...props
-}: SidebarProps) {
+}: BaseSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createBrowserSupabaseClient();

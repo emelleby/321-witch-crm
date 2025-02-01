@@ -1,11 +1,15 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserSupabaseClient } from "@/utils/supabase/client";
+import type {
+  AuthTokenResponsePassword,
+  SupabaseClient,
+} from "@supabase/supabase-js";
 
 export interface AuthService {
   signUp(params: SignUpParams): Promise<SignUpResult>;
   signInWithPassword(params: {
     email: string;
     password: string;
-  }): Promise<{ data: { user: any }; error: Error | null }>;
+  }): Promise<AuthTokenResponsePassword>;
   createProfile(params: CreateProfileParams): Promise<void>;
   createOrganization(params: CreateOrganizationParams): Promise<string | null>;
   createUserAndOrganization(params: {
@@ -144,5 +148,22 @@ export class SupabaseAuthService implements AuthService {
     });
 
     if (error) throw error;
+  }
+}
+
+export async function signIn(email: string, password: string) {
+  try {
+    const supabase = createBrowserSupabaseClient();
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      throw new Error(error.message);
+    }
+    throw new Error("An unknown error occurred during sign in");
   }
 }

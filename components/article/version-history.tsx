@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { createBrowserSupabaseClient } from "@/utils/supabase/client";
-
 interface Version {
   id: string;
   version_number: number;
@@ -82,14 +81,14 @@ export function VersionHistory({
 
       // Fetch versions with user names
       const { data: versionsData, error } = await supabase
-        .from("article_versions")
+        .from("knowledge_article_versions")
         .select(
           `
-                    *,
-                    user_name:created_by(
-                        full_name
-                    )
-                `
+            *,
+            updated_by:updated_by_user_id(
+              display_name
+            )
+          `
         )
         .eq("article_id", articleId)
         .order("version_number", { ascending: false });
@@ -98,8 +97,17 @@ export function VersionHistory({
 
       setVersions(
         versionsData.map((version) => ({
-          ...version,
-          user_name: version.user_name?.full_name || "Unknown User",
+          id: version.version_id,
+          version_number: version.version_number,
+          title: version.title,
+          content: version.content,
+          category: "", // These fields aren't in the DB schema
+          tags: [], // but are required by the Version interface
+          file_ids: [],
+          created_at: version.created_at,
+          created_by: version.updated_by_user_id || "",
+          change_summary: version.update_reason || "",
+          user_name: version.updated_by?.display_name || "Unknown User",
         }))
       );
     } catch (error) {
