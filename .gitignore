@@ -75,3 +75,4 @@ summary_for_llm.md
 docker-compose.prod.yml
 InfoForFrontend.md
 .vscode/tasks.json
+.qodo
